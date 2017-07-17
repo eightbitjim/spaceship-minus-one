@@ -100,7 +100,7 @@ smoothScroll	subroutine
 .finished		
 				rts
 .resetScroll
-				ldx #4 * 8	; 4 characters to reset
+				ldx #5 * 8	; 5 characters to reset
 .loop2
 				dex
 				lda towerLeftOriginal,x
@@ -387,6 +387,7 @@ subcursor		subroutine
 towerheight		dc 0
 gapwidth		dc 8
 fuelColumn		dc 4
+fuelChar		dc 3
 
 ; color and colorcharacter already set
 ; a is character to draw
@@ -435,24 +436,39 @@ drawtower		subroutine
 				lda towercolumnsleft
 				cmp fuelColumn
 				bne .305
-				
+
 				; print fuel
-				lda #3;#fuelcharacter
+				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta character
 				jsr storechar
 				lda #spacecharacter ; back to printing spaces
 				sta character
+				
+				; do we need to print the second edge?
+				lda fuelChar
+				cmp #fuelLeft
+				beq .switchToRight
+								
+				; switch to printing the left edge again and choose the position for
+				; the next fuel character
+				lda #fuelLeft
+				sta fuelChar
 				jsr random
 				and #7 ; random number 0 to 7
-				cmp #7
+				cmp #0
 				bne .not7
-				lda #3 ; replace a 7 with a 3 to put the fuel between towers not just before a tower
+				lda #3 ; replace a 0 with a 3 to put the fuel between towers not just before a tower
 .not7
 				sta fuelColumn
 .305
 				dey
 				jmp .3
-
+.switchToRight
+				lda #fuelRight
+				sta fuelChar
+				dec fuelColumn ; set to print the right hand edge next column
+				jmp .305
+				
 				; now the top bit
 .31				lda tempVar
 				sta character
@@ -645,6 +661,9 @@ bottomBlockPosition	equ startOfChars + 32
 fuelLeftEdge	equ startOfChars + 5 * 8
 fuelRightEdge	equ startOfChars + 6 * 8
 
+fuelLeft		equ 5
+fuelRight		equ 6
+
 charDefinitionPointer	equ 36869
 
 chars			dc.b	255,255,255,255,255,255,255,255
@@ -653,12 +672,12 @@ charEmpty		dc.b	0,0,0,0,0,0,0,0
 charBlock		dc.b	255,255,255,255,255,255,255,255
 bottomBlock		dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
 fuel1			dc.b	0,0,0,0,0,0,0,0
-fuel2			dc.b	0,126,126,126,126,126,126,0
+fuel2			dc.b	0,0,255,255,255,255,0,0
 
 towerLeftOriginal	equ chars + 16
 towerRightOriginal	equ chars + 24
 				
-numBytes		equ		7 * 8
+numBytes		equ		56 ; 7 * 8
 
 defineCharacters	subroutine
 				;;; Prepare character definitions
