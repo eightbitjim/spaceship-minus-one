@@ -46,10 +46,29 @@ keypress		equ		197
 keyspace		equ		32
 nokey			equ		64
 
+fuelIncreateAmount equ 50
+
 .outOfFuel
 				rts
-				
+
+.collectFuelLeft
+				lda #32
+				sta character
+				inc cursor
+				jsr storechar
+				jmp .doneCollision		
+.collectFuelRight
+				lda #32
+				sta character
+				dec cursor
+				jsr storechar				
+				jmp .doneCollision		
 .collision
+				; what have we collided with?
+				cmp #fuelLeft
+				beq .collectFuelLeft
+				cmp #fuelRight
+				beq .collectFuelRight
 				rts
 .scrolled
 				lda #8
@@ -59,6 +78,7 @@ nokey			equ		64
 				lda charReplaced
 				cmp #32
 				bne .collision
+.doneCollision
 				jsr control					
 				jsr delay
 				jsr clearship
@@ -386,7 +406,8 @@ subcursor		subroutine
 ;;;; Draw a tower at the right hand side of the screen
 towerheight		dc 0
 gapwidth		dc 8
-fuelColumn		dc 4
+fuelColumn		dc 128 + 4 ; set MSB to indicate will not be drawn. Reset bit when drawing next tower
+fuelRow			dc 10 ; height above the ground or tower
 fuelChar		dc 3
 
 ; color and colorcharacter already set
@@ -394,7 +415,7 @@ fuelChar		dc 3
 tempVar			dc.b	0
 
 drawtower		subroutine
-				;; If the tower is zero height, draw a space at the bottom and then draw a gap the height
+				;; If the tower is zero height, draw a space at the bottom and then draw a gap full height
 				;; if the screen
 				ldy towerheight
 				cpy #0
@@ -437,6 +458,10 @@ drawtower		subroutine
 				cmp fuelColumn
 				bne .305
 
+				; is this the row to print the fuel at?
+				cpy fuelRow
+				bne .305 ; not yet right height to print fuel
+				
 				; print fuel
 				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta character
@@ -453,13 +478,22 @@ drawtower		subroutine
 				; the next fuel character
 				lda #fuelLeft
 				sta fuelChar
-				jsr random
-				and #7 ; random number 0 to 7
-				cmp #0
+				lda #6
+;;				jsr random ; need to choose 1 to 6
+				and #$7 ; random number 0 to 7
+				ora #$80 ; net MSB to delay drawing until after next tower
+				cmp #$87
 				bne .not7
 				lda #3 ; replace a 0 with a 3 to put the fuel between towers not just before a tower
 .not7
 				sta fuelColumn
+				
+				; now the row
+				jsr random 
+				and #$0f
+				clc
+				adc #$3
+				sta fuelRow
 .305
 				dey
 				jmp .3
@@ -494,7 +528,7 @@ drawline		subroutine
 				lda #0
 				cmp towercolumnsleft
 				bne .drawit
-				
+								
 				; work out next tower height
 				lda towerheight
 				cmp #0
@@ -522,6 +556,12 @@ drawline		subroutine
 				sta towercolumnsleft
 				lda #0
 				sta towerheight
+				
+				; allow fuel to be drawn from now on
+				lda fuelColumn
+				and #$7f
+				sta fuelColumn
+				
 				jmp .drawit			
 
 ;;;; Random number generator
