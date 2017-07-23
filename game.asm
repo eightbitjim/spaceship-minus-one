@@ -43,6 +43,8 @@ shipDirection	dc		directionDown
 shipimpulse		equ		80
 gravity			equ		3	
 
+jetSound		dc		0
+
 keypress		equ		197
 
 keyspace		equ		32
@@ -64,6 +66,9 @@ nokey			equ		64
 				jsr storechar				
 				jmp .increaseFuel		
 .increaseFuel
+				lda #255
+				sta fuelSoundCount
+				
 				lda #fuelIncreaseAmount
 				sta fuelIncreaseLeft
 				jmp .doneCollision
@@ -73,6 +78,9 @@ nokey			equ		64
 				beq .collectFuelLeft
 				cmp #fuelRight
 				beq .collectFuelRight
+				
+				; End of game
+				jsr stopSound
 				rts
 .scrolled
 				lda #8
@@ -87,6 +95,7 @@ nokey			equ		64
 				jsr delay
 				jsr clearship
 				jsr physics
+				jsr updateSound
 				jsr smoothScroll
 				dec scrollCounter
 				bne .1
@@ -179,6 +188,8 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				rts
 								
 init			subroutine
+				jsr setUpSound
+				
 				lda #10		; set ship start position
 				sta shipx
 				lda #10
@@ -668,6 +679,8 @@ control			subroutine
 				bne .notpress
 				; space just pressed
 				; apply an impulse
+				lda #255
+				sta jetSound
 				lda #shipimpulse
 				sta shipdy
 				lda #directionUp
@@ -708,6 +721,11 @@ physics			subroutine
 .maxVelocity
 				rts
 .goingUp
+				lda jetSound
+				cmp #0
+				beq .notjet
+				dec jetSound	
+.notjet
 				lda shipdy
 				; decrease velocity
 				sec				
@@ -773,5 +791,43 @@ defineCharacters	subroutine
 				lda #$ff
 				sta $9005
 				rts
-					
 				
+soundVolume		equ		36878
+voice0			equ		36874
+voice1			equ		36875
+voice2			equ		36876
+voice3			equ		36877
+
+fuelSoundCount	dc 0
+
+setUpSound
+				lda #15
+				sta soundVolume	; volume = 15
+				lda #0
+				sta voice0	; voice 0
+				sta voice1	; voice 1
+				sta voice2	; voice 2
+				sta voice3	; voice 3 : noise
+				rts
+stopSound
+				lda #0
+				sta voice0
+				sta voice1
+				sta voice2
+				sta voice3
+				sta soundVolume
+				rts
+				
+updateSound subroutine
+				lda jetSound
+				sta voice3
+				
+				lda fuelSoundCount
+				sta voice2
+				sta voice0
+				cmp #0
+				beq .donefuelsound
+				dec fuelSoundCount
+.donefuelsound
+				rts
+					
