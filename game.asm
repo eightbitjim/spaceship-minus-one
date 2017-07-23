@@ -31,6 +31,8 @@ shipMinorY		dc 		0
 shipy			dc 		10
 
 fuel			dc 		0
+fuelIncreaseLeft	dc 	0
+fuelIncreaseAmount equ 10
 
 directionUp		equ		$ff
 directionDown	equ		$01
@@ -46,8 +48,6 @@ keypress		equ		197
 keyspace		equ		32
 nokey			equ		64
 
-fuelIncreateAmount equ 50
-
 .outOfFuel
 				rts
 
@@ -56,13 +56,17 @@ fuelIncreateAmount equ 50
 				sta character
 				inc cursor
 				jsr storechar
-				jmp .doneCollision		
+				jmp .increaseFuel		
 .collectFuelRight
 				lda #32
 				sta character
 				dec cursor
 				jsr storechar				
-				jmp .doneCollision		
+				jmp .increaseFuel		
+.increaseFuel
+				lda #fuelIncreaseAmount
+				sta fuelIncreaseLeft
+				jmp .doneCollision
 .collision
 				; what have we collided with?
 				cmp #fuelLeft
@@ -130,9 +134,35 @@ smoothScroll	subroutine
 				rts
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
-
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
+				lda #0
+				cmp fuelIncreaseLeft
+				beq .decreaseFuel
+
+				; otherwise increase fuel
+				lda #255
+				cmp fuel
+				beq .doneIncreaseAndReadyToReturn		
+				inc fuel
+				lda #58  + 128; '9' + 1
+.increaseFuel
+				inc screenstart,x
+				cmp screenstart,x
+				bne .doneIncrease
+				lda #48 + 128 ; '0'
+				sta screenstart,x
+				lda #58  + 128; '9' + 1
+				dex
+				cpx #5
+				bne .increaseFuel				
+.doneIncrease		
+.doneIncreaseAndReadyToReturn
+				dec fuelIncreaseLeft
+				lda #1 ; clear zero flag
+				rts
+
+.decreaseFuel
 				lda #48  + 128 - 1; '0' - 1
 .digitloop
 				dec screenstart,x
