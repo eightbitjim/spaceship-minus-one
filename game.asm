@@ -1,18 +1,27 @@
 				processor 6502
 				org $1400 ; should be free
 
-scrolldemo		subroutine
+start   		subroutine
+				jsr init
+restart
+				jsr startScreen
 				jsr init
 				jmp .scrollNow
 				
-welcome		dc.b	147,18,31," FUEL 255       ",144,"000000",146,0
-welcometerminator 	dc 0
+welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
+startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
+				dc.b	17,17,17,17, 159, 18, " PRESS SPACE TO START ",0
 
+fuelMessage		dc.b	147," YOU RAN OUT OF FUEL ",13,0
+crashMessage	dc.b	147," YOU CRASHED ", 13, 0
+
+welcometerminator 	dc 0
 
 scrollCounter	dc 		0
 
 rasterline		equ 	$9004
 borderPaper		equ		$900f
+screenMemoryPage	equ	648 ; screen memory page for operating system
 
 CHROUT			equ 	$ffd2
 
@@ -31,6 +40,8 @@ shipMinorY		dc 		0
 shipy			dc 		10
 
 fuel			dc 		0
+fuelIncreaseLeft	dc 	0
+fuelIncreaseAmount equ 10
 
 directionUp		equ		$ff
 directionDown	equ		$01
@@ -41,35 +52,52 @@ shipDirection	dc		directionDown
 shipimpulse		equ		80
 gravity			equ		3	
 
+jetSound		dc		0
+
 keypress		equ		197
 
 keyspace		equ		32
 nokey			equ		64
 
-fuelIncreateAmount equ 50
+scoreLo			dc 0
+scoreHi			dc 0
 
 .outOfFuel
-				rts
+				jmp restart
+;				rts
 
 .collectFuelLeft
 				lda #32
 				sta character
 				inc cursor
 				jsr storechar
-				jmp .doneCollision		
+				jmp .increaseFuel		
 .collectFuelRight
 				lda #32
 				sta character
 				dec cursor
 				jsr storechar				
-				jmp .doneCollision		
+				jmp .increaseFuel		
+.increaseFuel
+				lda #128
+				sta fuelSoundCount
+				
+				lda #fuelIncreaseAmount
+				sta fuelIncreaseLeft
+				jmp .doneCollision
 .collision
 				; what have we collided with?
 				cmp #fuelLeft
 				beq .collectFuelLeft
 				cmp #fuelRight
 				beq .collectFuelRight
-				rts
+				
+				; End of game
+				lda #7 ; yellow
+				sta explosionColor
+				jsr explode
+				jsr stopSound
+				jmp restart
 .scrolled
 				lda #8
 				sta scrollCounter
@@ -83,6 +111,7 @@ fuelIncreateAmount equ 50
 				jsr delay
 				jsr clearship
 				jsr physics
+				jsr updateSound
 				jsr smoothScroll
 				dec scrollCounter
 				bne .1
@@ -90,7 +119,6 @@ fuelIncreateAmount equ 50
 				jsr scroll
 				jsr drawscreen
 				jsr updatePeriodic
-				beq .outOfFuel
 				jmp .scrolled
 
 smoothScroll	subroutine
@@ -130,9 +158,42 @@ smoothScroll	subroutine
 				rts
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
-
+				jsr increaseScore
+				
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
+				lda #0
+				cmp fuelIncreaseLeft
+				beq .decreaseFuel
+
+				; otherwise increase fuel
+				lda #255
+				cmp fuel
+				beq .doneIncreaseAndReadyToReturn		
+				inc fuel
+				lda #58  + 128; '9' + 1
+.increaseFuel
+				inc screenstart,x
+				cmp screenstart,x
+				bne .doneIncrease
+				lda #48 + 128 ; '0'
+				sta screenstart,x
+				lda #58  + 128; '9' + 1
+				dex
+				cpx #5
+				bne .increaseFuel				
+.doneIncrease		
+.doneIncreaseAndReadyToReturn
+				dec fuelIncreaseLeft
+				lda #1 ; clear zero flag
+				rts
+
+.decreaseFuel
+				lda fuel
+				cmp #0
+				bne .notEmpty
+				rts		
+.notEmpty
 				lda #48  + 128 - 1; '0' - 1
 .digitloop
 				dec screenstart,x
@@ -147,8 +208,42 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 .done				
 				dec fuel
 				rts
-								
+					
+; Increase score by one and update the onscreen counter
+increaseScore	subroutine
+				inc scoreLo
+				bne .doneIncrease
+				inc scoreHi	
+.doneIncrease
+				; increase the digits on screen
+				lda #58  + 128; '9' + 1
+				ldx #20 ; position of score digits from the start of screen memory
+.increaseDigits
+				inc screenstart,x
+				cmp screenstart,x
+				bne .doneIncreaseDigits
+				lda #48 + 128 ; '0'
+				sta screenstart,x
+				lda #58  + 128; '9' + 1
+				dex
+				cpx #20 - 5 ; reached the last digit?
+				bne .increaseDigits				
+.doneIncreaseDigits
+				rts
+			
 init			subroutine
+				; make sure the screen is in the right place
+				lda #150
+				sta 36866
+				
+				lda #255
+				sta 36869
+				
+				lda #30 ; default screen page
+				sta screenMemoryPage
+				
+				jsr setUpSound
+				
 				lda #10		; set ship start position
 				sta shipx
 				lda #10
@@ -171,8 +266,10 @@ init			subroutine
 				lda #0
 				sta shipdy
 				sta towerheight
+				sta scoreLo
+				sta scoreHi
 				
-				lda #255
+				lda #100
 				sta fuel
 				
 				lda #4
@@ -180,6 +277,9 @@ init			subroutine
 				
 				lda #16
 				sta towercolumnsleft
+				
+				lda #fuelLeft
+				sta fuelChar
 				rts
 
 defaultBackground	equ 3
@@ -586,7 +686,7 @@ random			subroutine
 				rts
 				
 delaycount		dc 0	
-delay			ldx #$30
+delay			ldx #$20 ; 30
 				stx delaycount
 				lda #0
 				sta borderPaper
@@ -629,6 +729,11 @@ drawscreen		subroutine
 lastkey			dc	0
 	
 control			subroutine
+				lda fuel	; if fuel is exhausted, no control is possible
+				cmp #0
+				bne .notEmpty
+				rts
+.notEmpty
 				lda keypress
 				ldx lastkey
 				sta lastkey
@@ -638,6 +743,8 @@ control			subroutine
 				bne .notpress
 				; space just pressed
 				; apply an impulse
+				lda #255
+				sta jetSound
 				lda #shipimpulse
 				sta shipdy
 				lda #directionUp
@@ -678,6 +785,11 @@ physics			subroutine
 .maxVelocity
 				rts
 .goingUp
+				lda jetSound
+				cmp #0
+				beq .notjet
+				dec jetSound	
+.notjet
 				lda shipdy
 				; decrease velocity
 				sec				
@@ -700,6 +812,7 @@ towerRightEdge	equ startOfChars + 24
 bottomBlockPosition	equ startOfChars + 32
 fuelLeftEdge	equ startOfChars + 5 * 8
 fuelRightEdge	equ startOfChars + 6 * 8
+filledChar		equ 0
 
 fuelLeft		equ 5
 fuelRight		equ 6
@@ -719,7 +832,37 @@ towerRightOriginal	equ chars + 24
 				
 numBytes		equ		56 ; 7 * 8
 
+copyROMCharacters	subroutine
+				;;; First copy original character definitions in
+				lda #<32768 ; start of ROM character set
+				sta cursor
+				lda #>32768 
+				sta cursor + 1
+				
+				lda #<7168 
+				sta	colorcursor
+				lda #>7168
+				sta colorcursor + 1
+				
+				ldy #0
+				ldx #1
+.copyLoop
+				lda (cursor),y
+				sta (colorcursor),y
+				iny
+				cpy #0
+				bne .copyLoop
+				inc cursor + 1
+				inc colorcursor + 1
+				dex
+				cpx #0 
+				bne .copyLoop
+				rts
+				
+				
 defineCharacters	subroutine
+				jsr copyROMCharacters
+				
 				;;; Prepare character definitions
 				lda #<chars
 				sta cursor
@@ -743,5 +886,193 @@ defineCharacters	subroutine
 				lda #$ff
 				sta $9005
 				rts
+				
+soundVolume		equ		36878
+voice0			equ		36874
+voice1			equ		36875
+voice2			equ		36876
+voice3			equ		36877
+
+fuelSoundCount	dc 0
+
+setUpSound
+				lda #15
+				sta soundVolume	; volume = 15
+				lda #0
+				sta voice0	; voice 0
+				sta voice1	; voice 1
+				sta voice2	; voice 2
+				sta voice3	; voice 3 : noise
+				rts
+stopSound
+				lda #0
+				sta voice0
+				sta voice1
+				sta voice2
+				sta voice3
+				sta soundVolume
+				rts
+				
+updateSound subroutine
+				lda jetSound
+				sta voice3
+				
+				lda fuelSoundCount
+				sta voice2
+				rol
+				sta voice0
+				lda fuelSoundCount
+				cmp #0
+				beq .donefuelsound
+				inc fuelSoundCount
+				inc fuelSoundCount
+				inc fuelSoundCount
+				inc fuelSoundCount
+.donefuelsound
+				rts
+
+explodeCountLo	dc 0
+explosionSize	dc 0
+explosionLeftEdge	dc 0
+explosionRightEdge	dc 0
+explosionTopEdge	dc 0
+explosionBottomEdge	dc 0
+
+explosionX		dc 0
+explosionY		dc 0
+explosionColor	dc 165
+
+screenWidth		equ 23
+screenHeight	equ 24
+
+explode subroutine
+				lda #$ff
+				sta explodeCountLo	
+				lda #$1
+				sta explosionSize	
+.explodeLoop
+				; explode count
+				lda explodeCountLo
+				sta voice3
+				sta voice2
+				sta voice1
+				sta voice0
+		
+				; draw explosion effect
+				; work out left edge and right edge of current frame
+
+				; RIGHT EDGE
+				lda shipx
+				clc
+				adc explosionSize
+				cmp #screenWidth
+				bmi .notOffRightEdge
+				lda #screenWidth - 1
+.notOffRightEdge
+				sta explosionRightEdge
+				
+				; LEFT EDGE
+				lda shipx
+				sec
+				sbc explosionSize
+				bmi .offLeftEdge
+				jmp .doneLeftEdge
+.offLeftEdge
+				lda #0
+.doneLeftEdge
+				sta explosionLeftEdge
+				
+				; BOTTOM EDGE
+				lda shipy
+				clc
+				adc explosionSize
+				cmp #screenHeight
+				bmi .notOffBottomEdge
+				lda #screenHeight
+.notOffBottomEdge
+				sta explosionBottomEdge
+				
+				; TOP EDGE
+				lda shipy
+				sec
+				sbc explosionSize
+				bmi .offTopEdge
+				jmp .doneTopEdge
+.offTopEdge
+				lda #0
+.doneTopEdge
+				sta explosionTopEdge								
 					
+				; now draw the explosion box
+				lda #32
+				sta character
+
+				lda explosionTopEdge
+				sta explosionY
+				
+.lineLoop
+				lda explosionLeftEdge
+				sta explosionX
+
+				ldx explosionX
+				ldy explosionY
+				jsr drawchar
+				ldy #0
+.columnLoop
+				jsr storechar
+				lda explosionColor
+				sta (colorcursor),y
+				lda #1
+				jsr addcursor
+				iny
+				inc explosionX
+				lda explosionX
+				cmp explosionRightEdge
+				bne .columnLoop
+				
+				inc explosionY
+				lda explosionY
+				cmp explosionBottomEdge
+				bne .lineLoop
+		
+				; increment counters
+				jsr delay
+
+				dec explodeCountLo
+				dec explodeCountLo
+				dec explodeCountLo
+				dec explodeCountLo
+				inc explosionSize
+				lda explosionSize
+				cmp #23 ; max explosion size
+				beq .done
+				jmp .explodeLoop			
+.done			
+				; finished
+				rts
+
+startScreen     subroutine
+				lda #6 ; blue
+				sta explosionColor
+				jsr explode
+				lda #1
+				sta explosionColor
+				jsr explode
+				jsr stopSound
+				
+				; clear screen and display score
+				lda #<startMessage
+				sta cursor;
+				lda #>startMessage
+				sta cursor + 1
+				jsr printline
+				jsr waitForStartKey
+				rts
+				
+waitForStartKey subroutine
+				jsr random
+				lda keypress
+				cmp #32 ; space
+				bne waitForStartKey
+				rts
 				
