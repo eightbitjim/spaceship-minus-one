@@ -1,12 +1,15 @@
 				processor 6502
 				org $1400 ; should be free
 
-scrolldemo		subroutine
+start   		subroutine
+				jsr init
+restart
+				jsr startScreen
 				jsr init
 				jmp .scrollNow
 				
 welcome		dc.b	147,18,31," FUEL 255       ",144,"000000",146,0
-startMessage	dc.b	" PRESS S TO START    ",0
+startMessage	dc.b	18, 31, " PRESS SPACE TO START ",0
 welcometerminator 	dc 0
 
 scrollCounter	dc 		0
@@ -51,7 +54,8 @@ keyspace		equ		32
 nokey			equ		64
 
 .outOfFuel
-				rts
+				jmp restart
+;				rts
 
 .collectFuelLeft
 				lda #32
@@ -82,7 +86,7 @@ nokey			equ		64
 				; End of game
 				jsr explode
 				jsr stopSound
-				rts
+				jmp restart
 .scrolled
 				lda #8
 				sta scrollCounter
@@ -628,7 +632,7 @@ random			subroutine
 				rts
 				
 delaycount		dc 0	
-delay			ldx #$30
+delay			ldx #$20 ; 30
 				stx delaycount
 				lda #0
 				sta borderPaper
@@ -954,5 +958,23 @@ explode subroutine
 				jmp .explodeLoop			
 .done			
 				; finished
+				rts
+
+startScreen     subroutine
+
+				; clear screen and display score
+				lda #<startMessage
+				sta cursor;
+				lda #>startMessage
+				sta cursor + 1
+				jsr printline
+				jsr waitForStartKey
+				rts
+				
+waitForStartKey subroutine
+				jsr random
+				lda keypress
+				cmp #32 ; space
+				bne waitForStartKey
 				rts
 				
