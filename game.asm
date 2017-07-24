@@ -21,6 +21,7 @@ scrollCounter	dc 		0
 
 rasterline		equ 	$9004
 borderPaper		equ		$900f
+screenMemoryPage	equ	648 ; screen memory page for operating system
 
 CHROUT			equ 	$ffd2
 
@@ -231,6 +232,16 @@ increaseScore	subroutine
 				rts
 			
 init			subroutine
+				; make sure the screen is in the right place
+				lda #150
+				sta 36866
+				
+				lda #255
+				sta 36869
+				
+				lda #30 ; default screen page
+				sta screenMemoryPage
+				
 				jsr setUpSound
 				
 				lda #10		; set ship start position
@@ -821,7 +832,37 @@ towerRightOriginal	equ chars + 24
 				
 numBytes		equ		56 ; 7 * 8
 
+copyROMCharacters	subroutine
+				;;; First copy original character definitions in
+				lda #<32768 ; start of ROM character set
+				sta cursor
+				lda #>32768 
+				sta cursor + 1
+				
+				lda #<7168 
+				sta	colorcursor
+				lda #>7168
+				sta colorcursor + 1
+				
+				ldy #0
+				ldx #1
+.copyLoop
+				lda (cursor),y
+				sta (colorcursor),y
+				iny
+				cpy #0
+				bne .copyLoop
+				inc cursor + 1
+				inc colorcursor + 1
+				dex
+				cpx #0 
+				bne .copyLoop
+				rts
+				
+				
 defineCharacters	subroutine
+				jsr copyROMCharacters
+				
 				;;; Prepare character definitions
 				lda #<chars
 				sta cursor
