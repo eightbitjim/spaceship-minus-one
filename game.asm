@@ -6,8 +6,8 @@ scrolldemo		subroutine
 				jmp .scrollNow
 				
 welcome		dc.b	147,18,31," FUEL 255       ",144,"000000",146,0
+startMessage	dc.b	" PRESS S TO START    ",0
 welcometerminator 	dc 0
-
 
 scrollCounter	dc 		0
 
@@ -80,6 +80,7 @@ nokey			equ		64
 				beq .collectFuelRight
 				
 				; End of game
+				jsr explode
 				jsr stopSound
 				rts
 .scrolled
@@ -748,6 +749,7 @@ towerRightEdge	equ startOfChars + 24
 bottomBlockPosition	equ startOfChars + 32
 fuelLeftEdge	equ startOfChars + 5 * 8
 fuelRightEdge	equ startOfChars + 6 * 8
+filledChar		equ 0
 
 fuelLeft		equ 5
 fuelRight		equ 6
@@ -824,10 +826,133 @@ updateSound subroutine
 				
 				lda fuelSoundCount
 				sta voice2
+				rol
 				sta voice0
+				lda fuelSoundCount
 				cmp #0
 				beq .donefuelsound
 				dec fuelSoundCount
 .donefuelsound
 				rts
+
+explodeCountLo	dc 0
+explosionSize	dc 0
+explosionLeftEdge	dc 0
+explosionRightEdge	dc 0
+explosionTopEdge	dc 0
+explosionBottomEdge	dc 0
+
+explosionX		dc 0
+explosionY		dc 0
+explosionColor	equ 17
+
+screenWidth		equ 23
+screenHeight	equ 24
+
+explode subroutine
+				lda #$ff
+				sta explodeCountLo	
+				lda #$1
+				sta explosionSize	
+.explodeLoop
+				; explode count
+				lda explodeCountLo
+				sta voice3
+				sta voice2
+				sta voice1
+				sta voice0
+		
+				; draw explosion effect
+				; work out left edge and right edge of current frame
+
+				; RIGHT EDGE
+				lda shipx
+				clc
+				adc explosionSize
+				cmp #screenWidth
+				bmi .notOffRightEdge
+				lda #screenWidth - 1
+.notOffRightEdge
+				sta explosionRightEdge
+				
+				; LEFT EDGE
+				lda shipx
+				sec
+				sbc explosionSize
+				bmi .offLeftEdge
+				jmp .doneLeftEdge
+.offLeftEdge
+				lda #0
+.doneLeftEdge
+				sta explosionLeftEdge
+				
+				; BOTTOM EDGE
+				lda shipy
+				clc
+				adc explosionSize
+				cmp #screenHeight
+				bmi .notOffBottomEdge
+				lda #screenHeight - 1
+.notOffBottomEdge
+				sta explosionBottomEdge
+				
+				; TOP EDGE
+				lda shipy
+				sec
+				sbc explosionSize
+				sbc #2
+				bmi .offTopEdge
+				jmp .doneTopEdge
+.offTopEdge
+				lda #1
+.doneTopEdge
+				sta explosionTopEdge								
 					
+				; now draw the explosion box
+				lda #filledChar
+				sta character
+
+				lda explosionTopEdge
+				sta explosionY
+				
+.lineLoop
+				lda explosionLeftEdge
+				sta explosionX
+
+				ldx explosionX
+				ldy explosionY
+				jsr drawchar
+				ldx #0
+.columnLoop
+				jsr storechar
+				lda #explosionColor
+				sta (colorcursor),x
+				lda #1
+				jsr addcursor
+				inx				
+				inc explosionX
+				lda explosionX
+				cmp explosionRightEdge
+				bne .columnLoop
+				
+				inc explosionY
+				lda explosionY
+				cmp explosionBottomEdge
+				bne .lineLoop
+		
+				; increment counters
+				jsr delay
+
+				dec explodeCountLo
+				dec explodeCountLo
+				dec explodeCountLo
+				dec explodeCountLo
+				inc explosionSize
+				lda explosionSize
+				cmp #23 ; max explosion size
+				beq .done
+				jmp .explodeLoop			
+.done			
+				; finished
+				rts
+				
