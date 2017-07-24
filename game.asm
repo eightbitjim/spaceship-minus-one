@@ -8,9 +8,12 @@ restart
 				jsr init
 				jmp .scrollNow
 				
-welcome			dc.b	147,18,31," FUEL 255       ",144,"000000",146,0
+welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
 startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
-				dc.b	17, 159, 18, " PRESS SPACE TO START ",0
+				dc.b	17,17,17,17, 159, 18, " PRESS SPACE TO START ",0
+
+fuelMessage		dc.b	147," YOU RAN OUT OF FUEL ",13,0
+crashMessage	dc.b	147," YOU CRASHED ", 13, 0
 
 welcometerminator 	dc 0
 
@@ -54,6 +57,9 @@ keypress		equ		197
 
 keyspace		equ		32
 nokey			equ		64
+
+scoreLo			dc 0
+scoreHi			dc 0
 
 .outOfFuel
 				jmp restart
@@ -112,7 +118,6 @@ nokey			equ		64
 				jsr scroll
 				jsr drawscreen
 				jsr updatePeriodic
-				beq .outOfFuel
 				jmp .scrolled
 
 smoothScroll	subroutine
@@ -152,6 +157,8 @@ smoothScroll	subroutine
 				rts
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
+				jsr increaseScore
+				
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
 				lda #0
@@ -181,6 +188,11 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				rts
 
 .decreaseFuel
+				lda fuel
+				cmp #0
+				bne .notEmpty
+				rts		
+.notEmpty
 				lda #48  + 128 - 1; '0' - 1
 .digitloop
 				dec screenstart,x
@@ -195,7 +207,29 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 .done				
 				dec fuel
 				rts
-								
+					
+; Increase score by one and update the onscreen counter
+increaseScore	subroutine
+				inc scoreLo
+				bne .doneIncrease
+				inc scoreHi	
+.doneIncrease
+				; increase the digits on screen
+				lda #58  + 128; '9' + 1
+				ldx #20 ; position of score digits from the start of screen memory
+.increaseDigits
+				inc screenstart,x
+				cmp screenstart,x
+				bne .doneIncreaseDigits
+				lda #48 + 128 ; '0'
+				sta screenstart,x
+				lda #58  + 128; '9' + 1
+				dex
+				cpx #20 - 5 ; reached the last digit?
+				bne .increaseDigits				
+.doneIncreaseDigits
+				rts
+			
 init			subroutine
 				jsr setUpSound
 				
@@ -221,8 +255,10 @@ init			subroutine
 				lda #0
 				sta shipdy
 				sta towerheight
+				sta scoreLo
+				sta scoreHi
 				
-				lda #255
+				lda #100
 				sta fuel
 				
 				lda #4
@@ -230,6 +266,9 @@ init			subroutine
 				
 				lda #16
 				sta towercolumnsleft
+				
+				lda #fuelLeft
+				sta fuelChar
 				rts
 
 defaultBackground	equ 3
@@ -679,6 +718,11 @@ drawscreen		subroutine
 lastkey			dc	0
 	
 control			subroutine
+				lda fuel	; if fuel is exhausted, no control is possible
+				cmp #0
+				bne .notEmpty
+				rts
+.notEmpty
 				lda keypress
 				ldx lastkey
 				sta lastkey
@@ -973,6 +1017,7 @@ startScreen     subroutine
 				lda #1
 				sta explosionColor
 				jsr explode
+				jsr stopSound
 				
 				; clear screen and display score
 				lda #<startMessage
