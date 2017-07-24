@@ -848,7 +848,7 @@ explosionBottomEdge	dc 0
 
 explosionX		dc 0
 explosionY		dc 0
-explosionColor	equ 17
+explosionColor	equ 165
 
 screenWidth		equ 23
 screenHeight	equ 24
@@ -913,7 +913,7 @@ explode subroutine
 				sta explosionTopEdge								
 					
 				; now draw the explosion box
-				lda #filledChar
+				lda #2;filledChar
 				sta character
 
 				lda explosionTopEdge
@@ -926,14 +926,14 @@ explode subroutine
 				ldx explosionX
 				ldy explosionY
 				jsr drawchar
-				ldx #0
+				ldy #0
 .columnLoop
 				jsr storechar
-				lda #explosionColor
-				sta (colorcursor),x
+				lda explosionSize
+				sta (colorcursor),y
 				lda #1
 				jsr addcursor
-				inx				
+				iny
 				inc explosionX
 				lda explosionX
 				cmp explosionRightEdge
