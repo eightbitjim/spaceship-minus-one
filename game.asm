@@ -8,8 +8,10 @@ restart
 				jsr init
 				jmp .scrollNow
 				
-welcome		dc.b	147,18,31," FUEL 255       ",144,"000000",146,0
-startMessage	dc.b	18, 31, " PRESS SPACE TO START ",0
+welcome			dc.b	147,18,31," FUEL 255       ",144,"000000",146,0
+startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
+				dc.b	17, 159, 18, " PRESS SPACE TO START ",0
+
 welcometerminator 	dc 0
 
 scrollCounter	dc 		0
@@ -70,7 +72,7 @@ nokey			equ		64
 				jsr storechar				
 				jmp .increaseFuel		
 .increaseFuel
-				lda #255
+				lda #128
 				sta fuelSoundCount
 				
 				lda #fuelIncreaseAmount
@@ -84,6 +86,8 @@ nokey			equ		64
 				beq .collectFuelRight
 				
 				; End of game
+				lda #7 ; yellow
+				sta explosionColor
 				jsr explode
 				jsr stopSound
 				jmp restart
@@ -835,7 +839,10 @@ updateSound subroutine
 				lda fuelSoundCount
 				cmp #0
 				beq .donefuelsound
-				dec fuelSoundCount
+				inc fuelSoundCount
+				inc fuelSoundCount
+				inc fuelSoundCount
+				inc fuelSoundCount
 .donefuelsound
 				rts
 
@@ -848,7 +855,7 @@ explosionBottomEdge	dc 0
 
 explosionX		dc 0
 explosionY		dc 0
-explosionColor	equ 165
+explosionColor	dc 165
 
 screenWidth		equ 23
 screenHeight	equ 24
@@ -896,7 +903,7 @@ explode subroutine
 				adc explosionSize
 				cmp #screenHeight
 				bmi .notOffBottomEdge
-				lda #screenHeight - 1
+				lda #screenHeight
 .notOffBottomEdge
 				sta explosionBottomEdge
 				
@@ -904,16 +911,15 @@ explode subroutine
 				lda shipy
 				sec
 				sbc explosionSize
-				sbc #2
 				bmi .offTopEdge
 				jmp .doneTopEdge
 .offTopEdge
-				lda #1
+				lda #0
 .doneTopEdge
 				sta explosionTopEdge								
 					
 				; now draw the explosion box
-				lda #2;filledChar
+				lda #32
 				sta character
 
 				lda explosionTopEdge
@@ -929,7 +935,7 @@ explode subroutine
 				ldy #0
 .columnLoop
 				jsr storechar
-				lda explosionSize
+				lda explosionColor
 				sta (colorcursor),y
 				lda #1
 				jsr addcursor
@@ -961,7 +967,13 @@ explode subroutine
 				rts
 
 startScreen     subroutine
-
+				lda #6 ; blue
+				sta explosionColor
+				jsr explode
+				lda #1
+				sta explosionColor
+				jsr explode
+				
 				; clear screen and display score
 				lda #<startMessage
 				sta cursor;
