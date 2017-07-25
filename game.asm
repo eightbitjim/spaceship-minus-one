@@ -686,7 +686,7 @@ random			subroutine
 				rts
 				
 delaycount		dc 0	
-delay			ldx #$60 ; 30
+delay			ldx #$30 ; 30
 				stx delaycount
 				lda #0
 				sta borderPaper
@@ -779,6 +779,7 @@ control			subroutine
 				sta shipdy
 				lda #directionUp
 				sta shipDirection	
+				jsr swapMinorY
 .notpress
 				
 				rts
@@ -797,7 +798,6 @@ physics			subroutine
 				adc shipDirection
 				sta shipy
 .doneShipPosition			
-	
 				; update ship velocity
 				; are we currently going up or down?
 				lda shipDirection
@@ -832,8 +832,15 @@ physics			subroutine
 				sta shipdy
 				lda #directionDown
 				sta shipDirection
+				jmp swapMinorY
+
+swapMinorY
+				; swap the minor y value around
+				lda #255
+				sec
+				sbc shipMinorY
+				sta shipMinorY
 				rts		
-				
 							
 ;;;; Graphics routines
 startOfChars	equ	7168
