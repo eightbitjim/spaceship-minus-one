@@ -686,7 +686,7 @@ random			subroutine
 				rts
 				
 delaycount		dc 0	
-delay			ldx #$20 ; 30
+delay			ldx #$60 ; 30
 				stx delaycount
 				lda #0
 				sta borderPaper
@@ -708,13 +708,43 @@ delay			ldx #$20 ; 30
 
 shipchar		dc 0
 
-drawship		lda #1		; ship picture
+drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor Y value
+				lda shipMinorY
+				lsr
+				lsr
+				lsr
+				lsr
+				lsr
+				clc
+				
+				ldx shipDirection
+				cpx #directionUp
+				beq .goingUp
+				adc #shipTopPrintable
+				; lda #shipTopPrintable + 1    ;#1		; ship picture
 				sta character
+				jmp drawshipchar
+.goingUp
+				sta character
+				lda #7
+				sbc character
+				adc #shipTopPrintable
+				sta character
+				
 drawshipchar	ldx shipx
 				ldy shipy
-				;lda #3
-				;sta color
 				jsr drawchar
+				
+				lda character
+				cmp #32
+				beq .keepSpace
+				clc
+				adc #8 ; bottom set are 8 bytes further on
+				sta character
+.keepSpace
+				lda #22
+				jsr addcursor
+				jsr storechar 
 				rts
 				
 clearship		lda #32		; space
@@ -812,6 +842,12 @@ towerRightEdge	equ startOfChars + 24
 bottomBlockPosition	equ startOfChars + 32
 fuelLeftEdge	equ startOfChars + 5 * 8
 fuelRightEdge	equ startOfChars + 6 * 8
+shipTop			equ startOfChars + 7 * 8  ; 8 character positions
+shipBottom		equ startOfChars + 15 * 8 ; 8 character positions 
+
+shipBottomPrintable	equ	15
+shipTopPrintable	equ 7
+
 filledChar		equ 0
 
 fuelLeft		equ 5
@@ -832,6 +868,69 @@ towerRightOriginal	equ chars + 24
 				
 numBytes		equ		56 ; 7 * 8
 
+copyNumber		dc		0
+topCopyPosition	dc		0
+bottomCopyPosition	dc 	0
+
+prepareShipCharacters	subroutine
+				; Need to make 8 copies of the top and bottom characters for the
+				; ship, with the ship shifted one pixel down each time
+				
+				; First, zero all the characters
+				ldy #16 * 8 - 1
+				lda #0
+.clearLoop
+				sta shipTop,y
+				sta shipBottom,y
+				cpy #0
+				beq	.doneClear
+				dey
+				jmp .clearLoop
+.doneClear
+				ldx #8 ; ship copy number 8 to 1
+				stx copyNumber
+				lda #0
+				sta topCopyPosition
+				sta bottomCopyPosition
+.copyNextPair
+				ldy #0 ; position within copy 0 to 7
+.shipCopyLoop
+				; first copy top part
+				cpy copyNumber	
+				beq .copiedTopPart
+				
+				lda charShip,y
+				ldx topCopyPosition
+				sta shipTop,x
+				inc topCopyPosition
+				inc bottomCopyPosition
+				iny
+				jmp .shipCopyLoop
+.copiedTopPart
+			
+.shipCopyBottomLoop
+				; then copy button part
+				cpy #8
+				beq .copiedBottomPart
+				
+				lda charShip,y
+				ldx bottomCopyPosition
+				sta shipBottom - 8,x
+				inc bottomCopyPosition
+				inc topCopyPosition
+				iny
+				jmp .shipCopyBottomLoop
+.copiedBottomPart
+				inc bottomCopyPosition
+				inc topCopyPosition
+				ldx copyNumber
+				cpx #0
+				beq .finished
+				dec copyNumber
+				jmp .copyNextPair
+.finished
+				rts
+				
 copyROMCharacters	subroutine
 				;;; First copy original character definitions in
 				lda #<32768 ; start of ROM character set
@@ -862,6 +961,7 @@ copyROMCharacters	subroutine
 				
 defineCharacters	subroutine
 				jsr copyROMCharacters
+				jsr prepareShipCharacters
 				
 				;;; Prepare character definitions
 				lda #<chars
