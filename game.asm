@@ -6,7 +6,7 @@ start   		subroutine
 restart
 				jsr startScreen
 				jsr init
-				jmp .scrollNow
+				jmp scrollNow
 				
 welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
 startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
@@ -66,6 +66,17 @@ scoreHi			dc 0
 				jmp restart
 ;				rts
 
+
+collision subroutine
+				; if end of game, return with zero flag not set
+				; what have we collided with?
+
+				cmp #fuelLeft
+				beq .collectFuelLeft
+				cmp #fuelRight
+				beq .collectFuelRight
+				rts ; zero flag not set, indicates fatal
+				
 .collectFuelLeft
 				lda #32
 				sta character
@@ -81,32 +92,41 @@ scoreHi			dc 0
 .increaseFuel
 				lda #128
 				sta fuelSoundCount
-				
 				lda #fuelIncreaseAmount
 				sta fuelIncreaseLeft
-				jmp .doneCollision
-.collision
-				; what have we collided with?
-				cmp #fuelLeft
-				beq .collectFuelLeft
-				cmp #fuelRight
-				beq .collectFuelRight
+.finishedNotFatal
+				lda #0 ; set zero flag to indicate non-fatal
+				rts
 				
+endGame		
 				; End of game
 				lda #7 ; yellow
 				sta explosionColor
 				jsr explode
 				jsr stopSound
 				jmp restart
-.scrolled
+
+scrolled subroutine
 				lda #8
 				sta scrollCounter
 .1				
 				jsr drawship
 				lda charReplaced
 				cmp #32
-				bne .collision
-.doneCollision
+				beq .doneCollision1
+				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
+				bne endGame
+.doneCollision1
+				lda charReplaced2
+				cmp #32
+				beq .doneCollision2
+				; move cursor up one line so collected object is cleared
+				lda #22
+				jsr subcursor
+				lda charReplaced2
+				jsr collision ; deal with the collision. Returns with zero flag set if fatal
+				bne endGame
+.doneCollision2
 				jsr control					
 				jsr delay
 				jsr clearship
@@ -115,11 +135,11 @@ scoreHi			dc 0
 				jsr smoothScroll
 				dec scrollCounter
 				bne .1
-.scrollNow		
+scrollNow		subroutine
 				jsr scroll
 				jsr drawscreen
 				jsr updatePeriodic
-				jmp .scrolled
+				jmp scrolled
 
 smoothScroll	subroutine
 				lda scrollCounter
@@ -450,7 +470,8 @@ scroll			subroutine
 ; x coord		x
 ; y coord		y
 character		dc 0
-charReplaced	dc 0
+charReplaced    dc 0
+charReplaced2	dc 0 ; used for second ship character collision
 
 drawchar		subroutine
 				;; initialise values
@@ -476,6 +497,7 @@ drawchar		subroutine
 .3				sta cursor		; got final low byte value
 				sta colorcursor	; and the color cursor
 				
+storeCharSaveReplaced
 				ldx #0
 				lda (cursor),x	; get character about to be replaced
 				sta	charReplaced
@@ -734,7 +756,8 @@ drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor
 drawshipchar	ldx shipx
 				ldy shipy
 				jsr drawchar
-				
+				lda charReplaced
+				sta charReplaced2 ; store this for collision detection later
 				lda character
 				cmp #32
 				beq .keepSpace
@@ -744,7 +767,7 @@ drawshipchar	ldx shipx
 .keepSpace
 				lda #22
 				jsr addcursor
-				jsr storechar 
+				jsr storeCharSaveReplaced
 				rts
 				
 clearship		lda #32		; space
@@ -1057,6 +1080,12 @@ explode subroutine
 				sta explodeCountLo	
 				lda #$1
 				sta explosionSize	
+				
+				lda shipy ; if ship is at bottom of screen, move up a bit so the explosion is visible
+				cpy #21
+				bmi .explodeLoop
+				lda #21
+				sta shipy
 .explodeLoop
 				; explode count
 				lda explodeCountLo
