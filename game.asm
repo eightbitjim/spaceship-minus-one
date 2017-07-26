@@ -1,5 +1,5 @@
 				processor 6502
-				org $1400 ; should be free
+				org $1300 ; 1400 originally. should be free
 				
 start   		subroutine
 				jsr init
@@ -23,9 +23,9 @@ rasterline			equ 	$9004
 borderPaper			equ		$900f
 screenMemoryPage	equ		648 ; screen memory page for operating system
 CHROUT				equ 	$ffd2 ; ROM routine
-screenstart 		equ		$1e00
-screenstarthigh		equ 	$1e
-colorstarthigh		equ		$96
+screenstart 		equ		$1000 ; $1e00 for unexpanded VIC, $1000 for expanded
+screenstarthigh		equ 	$10 ; $1e for unexpanded VIC, $10 for expanded
+colorstarthigh		equ		$94 ; $94 for expanded VIC, $96 for unexpanded VIC
 screenwidth			equ		22
 screenheight		equ		23
 fuelIncreaseAmount 	equ 	10
@@ -40,13 +40,13 @@ cursor 			equ		251 ; also 252
 shipMinorY		equ 	253
 shipy			equ		254
 colorcursor		equ		243
+shipx			equ		175
 scoreLo			equ		176
 scoreHi			equ 	177
 fuel			equ 	178
 fuelIncreaseLeft equ 	179
 scrollCounter	equ		204
 jetSound		equ		205
-shipx			equ		206
 shipdy			equ		207
 shipDirection	equ		216
 
@@ -250,14 +250,14 @@ init			subroutine
 			;	jsr setupTowerCharacters
 				
 				; make sure the screen is in the right place
-				lda #150
+				lda #22 ; 22 for expanded VIC, 150 for unexpanded
 				sta 36866
 				
-				lda #255
+				lda #192+1+2+4+8 ; 192+1+2+4+8 for expanded VIC, 240 normally for unexpanded, 255 for unexpanded with chars at 7168
 				sta 36869
 				
-				lda #30 ; default screen page
-				sta screenMemoryPage
+				lda #$10 ; default screen page. dec 30 for unexpanded vic
+				sta screenMemoryPage ; tell the kernel where the screen is
 				
 				jsr setUpSound
 				
@@ -1013,8 +1013,8 @@ defineCharacters	subroutine
 				bne .copyLoop
 						
 				;;; Switch character definitions to RAM
-				lda #$ff
-				sta $9005
+			;	lda #$ff
+			;	sta $9005
 				rts
 				
 soundVolume		equ		36878
@@ -1216,9 +1216,7 @@ towerChars1				dc.b	3,0,0,2 ; front edge, middle block, middle block, back edge
 towerChars2				dc.b	3,2,3,2
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
-setupTowerCharacters	subroutine
-				
-				
+setupTowerCharacters	subroutine				
 				lda #<towerChars1
 				sta cursor
 				lda #>towerChars1
