@@ -6,7 +6,7 @@ start   		subroutine
 restart
 				jsr startScreen
 				jsr init
-				jmp .scrollNow
+				jmp scrollNow
 				
 welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
 startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
@@ -66,6 +66,17 @@ scoreHi			dc 0
 				jmp restart
 ;				rts
 
+
+collision subroutine
+				; if end of game, return with zero flag not set
+				; what have we collided with?
+
+				cmp #fuelLeft
+				beq .collectFuelLeft
+				cmp #fuelRight
+				beq .collectFuelRight
+				rts ; zero flag not set, indicates fatal
+				
 .collectFuelLeft
 				lda #32
 				sta character
@@ -81,32 +92,41 @@ scoreHi			dc 0
 .increaseFuel
 				lda #128
 				sta fuelSoundCount
-				
 				lda #fuelIncreaseAmount
 				sta fuelIncreaseLeft
-				jmp .doneCollision
-.collision
-				; what have we collided with?
-				cmp #fuelLeft
-				beq .collectFuelLeft
-				cmp #fuelRight
-				beq .collectFuelRight
+.finishedNotFatal
+				lda #0 ; set zero flag to indicate non-fatal
+				rts
 				
+endGame		
 				; End of game
 				lda #7 ; yellow
 				sta explosionColor
 				jsr explode
 				jsr stopSound
 				jmp restart
-.scrolled
+
+scrolled subroutine
 				lda #8
 				sta scrollCounter
 .1				
 				jsr drawship
 				lda charReplaced
 				cmp #32
-				bne .collision
-.doneCollision
+				beq .doneCollision1
+				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
+				bne endGame
+.doneCollision1
+				lda charReplaced2
+				cmp #32
+				beq .doneCollision2
+				; move cursor up one line so collected object is cleared
+				lda #22
+				jsr subcursor
+				lda charReplaced2
+				jsr collision ; deal with the collision. Returns with zero flag set if fatal
+				bne endGame
+.doneCollision2
 				jsr control					
 				jsr delay
 				jsr clearship
@@ -115,11 +135,11 @@ scoreHi			dc 0
 				jsr smoothScroll
 				dec scrollCounter
 				bne .1
-.scrollNow		
+scrollNow		subroutine
 				jsr scroll
 				jsr drawscreen
 				jsr updatePeriodic
-				jmp .scrolled
+				jmp scrolled
 
 smoothScroll	subroutine
 				lda scrollCounter
@@ -450,7 +470,8 @@ scroll			subroutine
 ; x coord		x
 ; y coord		y
 character		dc 0
-charReplaced	dc 0
+charReplaced    dc 0
+charReplaced2	dc 0 ; used for second ship character collision
 
 drawchar		subroutine
 				;; initialise values
@@ -476,6 +497,7 @@ drawchar		subroutine
 .3				sta cursor		; got final low byte value
 				sta colorcursor	; and the color cursor
 				
+storeCharSaveReplaced
 				ldx #0
 				lda (cursor),x	; get character about to be replaced
 				sta	charReplaced
@@ -686,7 +708,7 @@ random			subroutine
 				rts
 				
 delaycount		dc 0	
-delay			ldx #$20 ; 30
+delay			ldx #$30 ; 30
 				stx delaycount
 				lda #0
 				sta borderPaper
@@ -708,13 +730,44 @@ delay			ldx #$20 ; 30
 
 shipchar		dc 0
 
-drawship		lda #1		; ship picture
+drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor Y value
+				lda shipMinorY
+				lsr
+				lsr
+				lsr
+				lsr
+				lsr
+				clc
+				
+				ldx shipDirection
+				cpx #directionUp
+				beq .goingUp
+				adc #shipTopPrintable
+				; lda #shipTopPrintable + 1    ;#1		; ship picture
 				sta character
+				jmp drawshipchar
+.goingUp
+				sta character
+				lda #7
+				sbc character
+				adc #shipTopPrintable
+				sta character
+				
 drawshipchar	ldx shipx
 				ldy shipy
-				;lda #3
-				;sta color
 				jsr drawchar
+				lda charReplaced
+				sta charReplaced2 ; store this for collision detection later
+				lda character
+				cmp #32
+				beq .keepSpace
+				clc
+				adc #8 ; bottom set are 8 bytes further on
+				sta character
+.keepSpace
+				lda #22
+				jsr addcursor
+				jsr storeCharSaveReplaced
 				rts
 				
 clearship		lda #32		; space
@@ -749,6 +802,7 @@ control			subroutine
 				sta shipdy
 				lda #directionUp
 				sta shipDirection	
+				jsr swapMinorY
 .notpress
 				
 				rts
@@ -767,7 +821,6 @@ physics			subroutine
 				adc shipDirection
 				sta shipy
 .doneShipPosition			
-	
 				; update ship velocity
 				; are we currently going up or down?
 				lda shipDirection
@@ -802,8 +855,15 @@ physics			subroutine
 				sta shipdy
 				lda #directionDown
 				sta shipDirection
+				jmp swapMinorY
+
+swapMinorY
+				; swap the minor y value around
+				lda #255
+				sec
+				sbc shipMinorY
+				sta shipMinorY
 				rts		
-				
 							
 ;;;; Graphics routines
 startOfChars	equ	7168
@@ -812,6 +872,12 @@ towerRightEdge	equ startOfChars + 24
 bottomBlockPosition	equ startOfChars + 32
 fuelLeftEdge	equ startOfChars + 5 * 8
 fuelRightEdge	equ startOfChars + 6 * 8
+shipTop			equ startOfChars + 7 * 8  ; 8 character positions
+shipBottom		equ startOfChars + 15 * 8 ; 8 character positions 
+
+shipBottomPrintable	equ	15
+shipTopPrintable	equ 7
+
 filledChar		equ 0
 
 fuelLeft		equ 5
@@ -832,6 +898,69 @@ towerRightOriginal	equ chars + 24
 				
 numBytes		equ		56 ; 7 * 8
 
+copyNumber		dc		0
+topCopyPosition	dc		0
+bottomCopyPosition	dc 	0
+
+prepareShipCharacters	subroutine
+				; Need to make 8 copies of the top and bottom characters for the
+				; ship, with the ship shifted one pixel down each time
+				
+				; First, zero all the characters
+				ldy #16 * 8 - 1
+				lda #0
+.clearLoop
+				sta shipTop,y
+				sta shipBottom,y
+				cpy #0
+				beq	.doneClear
+				dey
+				jmp .clearLoop
+.doneClear
+				ldx #8 ; ship copy number 8 to 1
+				stx copyNumber
+				lda #0
+				sta topCopyPosition
+				sta bottomCopyPosition
+.copyNextPair
+				ldy #0 ; position within copy 0 to 7
+.shipCopyLoop
+				; first copy top part
+				cpy copyNumber	
+				beq .copiedTopPart
+				
+				lda charShip,y
+				ldx topCopyPosition
+				sta shipTop,x
+				inc topCopyPosition
+				inc bottomCopyPosition
+				iny
+				jmp .shipCopyLoop
+.copiedTopPart
+			
+.shipCopyBottomLoop
+				; then copy button part
+				cpy #8
+				beq .copiedBottomPart
+				
+				lda charShip,y
+				ldx bottomCopyPosition
+				sta shipBottom - 8,x
+				inc bottomCopyPosition
+				inc topCopyPosition
+				iny
+				jmp .shipCopyBottomLoop
+.copiedBottomPart
+				inc bottomCopyPosition
+				inc topCopyPosition
+				ldx copyNumber
+				cpx #0
+				beq .finished
+				dec copyNumber
+				jmp .copyNextPair
+.finished
+				rts
+				
 copyROMCharacters	subroutine
 				;;; First copy original character definitions in
 				lda #<32768 ; start of ROM character set
@@ -862,6 +991,7 @@ copyROMCharacters	subroutine
 				
 defineCharacters	subroutine
 				jsr copyROMCharacters
+				jsr prepareShipCharacters
 				
 				;;; Prepare character definitions
 				lda #<chars
@@ -950,6 +1080,12 @@ explode subroutine
 				sta explodeCountLo	
 				lda #$1
 				sta explosionSize	
+				
+				lda shipy ; if ship is at bottom of screen, move up a bit so the explosion is visible
+				cpy #21
+				bmi .explodeLoop
+				lda #21
+				sta shipy
 .explodeLoop
 				; explode count
 				lda explodeCountLo
