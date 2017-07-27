@@ -12,9 +12,6 @@ welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
 startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
 				dc.b	17,17,17,17, 159, 18, " PRESS SPACE TO START ",0
 
-fuelMessage		dc.b	147," YOU RAN OUT OF FUEL ",13,0
-crashMessage	dc.b	147," YOU CRASHED ", 13, 0
-
 welcometerminator 	dc 0
 
 directionUp			equ		$ff
@@ -40,7 +37,7 @@ cursor 			equ		251 ; also 252
 shipMinorY		equ 	253
 shipy			equ		254
 colorcursor		equ		243
-shipx			equ		175
+shipx			equ		171
 scoreLo			equ		176
 scoreHi			equ 	177
 fuel			equ 	178
@@ -48,7 +45,7 @@ fuelIncreaseLeft equ 	179
 scrollCounter	equ		204
 jetSound		equ		205
 shipdy			equ		207
-shipDirection	equ		216
+shipDirection	equ		170
 
 
 ; non zero page variables
