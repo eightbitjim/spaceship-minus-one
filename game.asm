@@ -46,10 +46,10 @@ scrollCounter	equ		204
 jetSound		equ		205
 shipdy			equ		207
 shipDirection	equ		170
-
+fuelSoundCount	equ     169
 
 ; non zero page variables
-towerMode			dc		0
+towerMode			dc		0 ; 0 : towers with gaps, 1 : stars, 2: landscape, 3: canyon
 
 .outOfFuel
 				jmp restart
@@ -244,7 +244,7 @@ init			subroutine
 				sei ; don't need maskable interrupts
 				
 				ldx #0 ; tower character set 0
-			;	jsr setupTowerCharacters
+				jsr setupTowerCharacters
 				
 				; make sure the screen is in the right place
 				lda #22 ; 22 for expanded VIC, 150 for unexpanded
@@ -282,9 +282,9 @@ init			subroutine
 				sta towerheight
 				sta scoreLo
 				sta scoreHi
-				sta towerMode
+				sta towerMode ; pipes with gaps
 				
-				lda #100
+				lda #128 ; start with half full fuel
 				sta fuel
 				
 				lda #4
@@ -295,6 +295,10 @@ init			subroutine
 				
 				lda #fuelLeft
 				sta fuelChar
+				
+				lda #8
+				sta distanceBetweenTowers
+				sta gapWidth
 				rts
 
 defaultBackground		equ 	3
@@ -521,15 +525,15 @@ subcursor		subroutine
 
 ;;;; Draw a tower at the right hand side of the screen
 towerheight			dc 	0
-gapwidth			dc 	8
+
 fuelColumn			dc 	128 + 4 ; set MSB to indicate will not be drawn. Reset bit when drawing next tower
 fuelRow				dc 	10 ; height above the ground or tower
 fuelChar			dc 	3
 towercolumnsleft	dc	16
 
 ; color and colorcharacter already set
-; a is character to draw
-tempVar				dc.b	0
+; towerMiddleCharacter already set for the non-top/bottom character, and also in a
+; towerTopCharacter already set
 
 drawtower		subroutine
 				;; If the tower is zero height, draw a space at the bottom and then draw a gap full height
@@ -538,9 +542,9 @@ drawtower		subroutine
 				cpy #0
 				bne .draw
 				lda #spacecharacter
+				sta towerMiddleCharacter
 .draw
 				sta character
-				sta tempVar
 
 				;; draw first block at bottom right, then build up from there
 				ldx #screenwidth - 1
@@ -551,24 +555,30 @@ drawtower		subroutine
 				sta diff
 				ldy towerheight
 				cpy #0
-				beq .2
+				beq .drawnBottom
 				dey			; subtract one from tower height as bottom character is never drawn
-.1				beq .2				
-				jsr subcursor
+.1				beq .drawnBottom			
+				jsr subcursor ; move up a line
 				jsr storechar				
+				cpy #2
+				beq .switchToTopCharacter
 				dey
 				jmp .1
-								
-.2				; now draw the gap
+.switchToTopCharacter
+				lda towerTopCharacter ; use this next
+				sta character
+				dey
+				jmp .1										
+.drawnBottom	; now draw the gap
 				lda #spacecharacter
 				sta character
-				ldy gapwidth
+				ldy gapWidth
 				lda towerheight		; if tower height is zero, don't draw the top
 				cmp #0
 				bne .3
 				ldy #screenheight - 2
 				
-.3				beq .31
+.3				beq .drawnGap
 				jsr subcursor
 				jsr storechar
 				lda towercolumnsleft
@@ -598,7 +608,7 @@ drawtower		subroutine
 				lda #6
 ;;				jsr random ; need to choose 1 to 6
 				and #$7 ; random number 0 to 7
-				ora #$80 ; net MSB to delay drawing until after next tower
+				ora #$80 ; set MSB to delay drawing until after next tower
 				cmp #$87
 				bne .not7
 				lda #3 ; replace a 0 with a 3 to put the fuel between towers not just before a tower
@@ -619,29 +629,39 @@ drawtower		subroutine
 				sta fuelChar
 				dec fuelColumn ; set to print the right hand edge next column
 				jmp .305
-				
-				; now the top bit
-.31				lda tempVar
+
+.drawnGap
+				; now draw the the top part
+				ldy #1 ; draw 1 top character then switch to middle				
+				lda towerTopCharacter
 				sta character
 .4				lda.z cursor ; reached top line of screen?
 				cmp #21
-				beq .5
-				
+				beq .5				
 				jsr storechar
 				jsr subcursor			
+				dey
+				bne .4
+				lda towerMiddleCharacter
+				sta character
 				jmp .4
 .5				
 				rts
 			
 defaulttowerwidth		equ		4
 
-towercharacters			dc.b	3,0,0,2; to be filled in with real tower characters
+towercharacters			dc.b	3,0,0,2;
+towerTopCharacters 		dc.b	0, 32, 0, 32; to be filled in with real tower characters. Must immediately follow towercharacters
+
 spacecharacter			equ		32		
 bottomscreencharacter	equ		4
 fuelcharacter			equ 	6
 
+towerTopCharacter		dc.b 0 ; TODO: move to zero page
+towerMiddleCharacter	dc.b	0
+distanceBetweenTowers	dc.b	8
+gapWidth				dc.b	8
 
-				
 ;;;; Draw next right hand line of screen
 drawline		subroutine
 				lda #0
@@ -667,11 +687,14 @@ drawline		subroutine
 				cmp #0
 				beq .drawit1
 				ldx	towercolumnsleft
-				lda towercharacters,x
+				lda towerTopCharacters,x ; character to draw at top and bottom edge of towers (around the gap)
+				sta towerTopCharacter
+				lda towercharacters,x ;
+				sta towerMiddleCharacter 
 .drawit1		jsr drawtower
-				
+
 				rts
-.gap			lda #8
+.gap			lda distanceBetweenTowers
 				sta towercolumnsleft
 				lda #0
 				sta towerheight
@@ -1020,8 +1043,6 @@ voice1			equ		36875
 voice2			equ		36876
 voice3			equ		36877
 
-fuelSoundCount	dc 0
-
 setUpSound
 				lda #15
 				sta soundVolume	; volume = 15
@@ -1209,8 +1230,9 @@ waitForStartKey subroutine
 				bne waitForStartKey
 				rts
 
-towerChars1				dc.b	3,0,0,2 ; front edge, middle block, middle block, back edge
-towerChars2				dc.b	3,2,3,2
+towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	3,2,3,2 ,0,0,0,0
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ; stars
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 setupTowerCharacters	subroutine				
@@ -1218,7 +1240,7 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>towerChars1
 				sta cursor + 1
-				lda #4
+				lda #8 ; number of positions to skip over to get next set of characters
 .xloop
 				cpx #0 ; use this character set?
 				beq .useThis
@@ -1235,7 +1257,7 @@ setupTowerCharacters	subroutine
 				lda (cursor),y
 				sta (colorcursor),y
 				iny
-				cpy #4
+				cpy #8
 				bne .yloop
 .done
 				rts
