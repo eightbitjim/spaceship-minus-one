@@ -8,7 +8,7 @@ restart
 				jsr init
 				jmp scrollNow
 				
-welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
+welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
 startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
 				dc.b	17,17,17,17, 159, 18, " PRESS SPACE TO START ",0
 
@@ -49,7 +49,9 @@ shipDirection	equ		170
 fuelSoundCount	equ     169
 
 ; non zero page variables
-
+progressCounterLo	dc.b 0
+progressCounterHi	dc.b 0
+levelNumber			dc.b 0
 
 .outOfFuel
 				jmp restart
@@ -167,7 +169,7 @@ smoothScroll	subroutine
 				rts
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
-				jsr increaseScore
+				jsr increaseScoreAndProgress
 				
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
@@ -219,7 +221,7 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				rts
 					
 ; Increase score by one and update the onscreen counter
-increaseScore	subroutine
+increaseScoreAndProgress	subroutine
 				inc scoreLo
 				bne .doneIncrease
 				inc scoreHi	
@@ -237,9 +239,28 @@ increaseScore	subroutine
 				dex
 				cpx #20 - 5 ; reached the last digit?
 				bne .increaseDigits				
-.doneIncreaseDigits
+.doneIncreaseDigits			
+				; now decrease progress counter. If reached zero, move to next level before returning
+				dec progressCounterLo
+				bne .doneProgress
+				dec progressCounterHi
+				bne .doneProgress
+				jsr increaseLevel				
+.doneProgress
 				rts
 			
+increaseLevel	subroutine
+				ldx levelNumber
+				inx
+				cpx #maxLevel
+				bne .doneIncrease
+				ldx #0 ; increase level
+				; Increase speed (TODO)
+.doneIncrease
+				stx levelNumber
+				jsr setUpLevel
+				rts
+				
 init			subroutine
 				sei ; don't need maskable interrupts
 				
@@ -271,7 +292,6 @@ init			subroutine
 				jsr printline
 				
 				jsr defineCharacters ;prepare UDGs
-				jsr prepareColors ; prepare color map
 				jsr createBottomOfScreen
 				
 				lda #0
@@ -279,6 +299,7 @@ init			subroutine
 				sta towerheight
 				sta scoreLo
 				sta scoreHi
+				sta levelNumber
 				
 				lda #128 ; start with half full fuel
 				sta fuel
@@ -294,8 +315,10 @@ init			subroutine
 								
 				; Set up current level
 setUpLevel
-				ldx #0 ; tower character set 0 - TODO: make this increment with each level
-				jsr setupTowerCharacters ; also sets up constants				
+				ldx levelNumber
+				jsr setupTowerCharacters ; also sets up constants
+				ldx levelNumber	
+				jsr prepareColors ; prepare color map			
 				rts
 
 defaultBackground		equ 	3
@@ -321,6 +344,7 @@ bgOrfg				dc 		0 ; bg = 0; fg = 1
 ;	instruction = 255, x: change foreground color to following byte
 
 backgroundMap	
+; map 0
 				dc	255, 4, 254, 0, 22 ; title
 				dc	254, 3, 255, 1 ; change colours to clouds
 				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
@@ -328,20 +352,42 @@ backgroundMap
 				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
 				dc 	255, 5 ; change colour to grass
 				dc	110
-				
 				dc 253 ; end
-			
+; map 1
+				dc	255, 3, 254, 0, 22 ; title
+				dc	254, 3, 255, 1 ; change colours to clouds
+				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
+				dc 	255, 6 ; change colour to buildings
+				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
+				dc 	255, 5 ; change colour to grass
+				dc	110
+				dc 253 ; end
+; map 2
+
+
+; sets up background colours
+; start by loading x with the index of the colour map, starting at zero
+
 prepareColors	subroutine
-				lda #colorstarthigh ; use colorcursor to point to screen position in colour map
-				sta.z colorcursor + 1
-				lda #0
-				sta.z colorcursor
-				
 				lda #<backgroundMap	; use cursor to point to backgroundMap position
 				sta.z cursor
 				lda #>backgroundMap
 				sta.z cursor + 1
-
+				ldy #0 ; start at the beginning of the maps
+.findLoop
+				; seek to the right map
+				cpx #0
+				beq .foundMap
+				jsr .nextInstruction
+				cmp #253 ; end of map?
+				bne .findLoop
+				dex ; found end of current map
+				jmp .findLoop				
+.foundMap
+				lda #colorstarthigh ; use colorcursor to point to screen position in colour map
+				sta.z colorcursor + 1
+				lda #0
+				sta.z colorcursor
 				ldx #1
 				stx bgOrfg
 .switchbgfg
@@ -1086,19 +1132,19 @@ updateSound subroutine
 .donefuelsound
 				rts
 
-explodeCountLo	dc 0
-explosionSize	dc 0
+explodeCountLo		dc 0
+explosionSize		dc 0
 explosionLeftEdge	dc 0
 explosionRightEdge	dc 0
 explosionTopEdge	dc 0
 explosionBottomEdge	dc 0
 
-explosionX		dc 0
-explosionY		dc 0
-explosionColor	dc 165
+explosionX			dc 0
+explosionY			dc 0
+explosionColor		dc 165
 
-screenWidth		equ 23
-screenHeight	equ 24
+screenWidth			equ 23
+screenHeight		equ 24
 
 explode subroutine
 				lda #$ff
@@ -1243,10 +1289,12 @@ waitForStartKey subroutine
 ;       8    : horizontal gap between towers
 ;       9    : vertical gap between towers
 ;       10   : background colour map index (not yet used)
+;       11-12: number of moves before switching to next level (lo,hi)
 
-towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0; front edge, middle block, middle block, back edge, then tower top chars
-towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,0
-towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0; stars
+towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,1; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,0, 0,2
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2; stars
+maxLevel				equ 	3
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 setupTowerCharacters	subroutine				
@@ -1254,7 +1302,7 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>towerChars1
 				sta cursor + 1
-				lda #11 ; number of positions to skip over to get next set of characters
+				lda #13 ; number of positions to skip over to get next set of characters
 .xloop
 				cpx #0 ; use this character set?
 				beq .useThis
@@ -1282,5 +1330,11 @@ setupTowerCharacters	subroutine
 				iny
 				lda (cursor),y
 				; sta somewhere, not yet implemented
+				iny
+				lda (cursor),y
+				sta progressCounterLo
+				iny
+				lda (cursor),y
+				sta progressCounterHi
 				rts
 				
