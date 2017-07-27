@@ -49,7 +49,7 @@ shipDirection	equ		170
 fuelSoundCount	equ     169
 
 ; non zero page variables
-towerMode			dc		0 ; 0 : towers with gaps, 1 : stars, 2: landscape, 3: canyon
+
 
 .outOfFuel
 				jmp restart
@@ -243,9 +243,6 @@ increaseScore	subroutine
 init			subroutine
 				sei ; don't need maskable interrupts
 				
-				ldx #0 ; tower character set 0
-				jsr setupTowerCharacters
-				
 				; make sure the screen is in the right place
 				lda #22 ; 22 for expanded VIC, 150 for unexpanded
 				sta 36866
@@ -282,7 +279,6 @@ init			subroutine
 				sta towerheight
 				sta scoreLo
 				sta scoreHi
-				sta towerMode ; pipes with gaps
 				
 				lda #128 ; start with half full fuel
 				sta fuel
@@ -290,15 +286,16 @@ init			subroutine
 				lda #4
 				sta fuelColumn
 				
-				lda #16
+				lda #16 ; give some space at the start of the level
 				sta towercolumnsleft
 				
 				lda #fuelLeft
 				sta fuelChar
-				
-				lda #8
-				sta distanceBetweenTowers
-				sta gapWidth
+								
+				; Set up current level
+setUpLevel
+				ldx #0 ; tower character set 0 - TODO: make this increment with each level
+				jsr setupTowerCharacters ; also sets up constants				
 				rts
 
 defaultBackground		equ 	3
@@ -535,14 +532,23 @@ towercolumnsleft	dc	16
 ; towerMiddleCharacter already set for the non-top/bottom character, and also in a
 ; towerTopCharacter already set
 
-drawtower		subroutine
+drawtowerScope  subroutine
+.shortTower
+				cpy #0
+				bne .not0
+				lda #spacecharacter
+				sta towerMiddleCharacter	
+				jmp .draw
+.not0
+				lda towerTopCharacter
+				jmp .draw
+drawtower		
 				;; If the tower is zero height, draw a space at the bottom and then draw a gap full height
 				;; if the screen
 				ldy towerheight
-				cpy #0
-				bne .draw
-				lda #spacecharacter
-				sta towerMiddleCharacter
+				cpy #2 ; One high, so print the top character instead of the middle
+				bmi .shortTower
+
 .draw
 				sta character
 
@@ -557,6 +563,7 @@ drawtower		subroutine
 				cpy #0
 				beq .drawnBottom
 				dey			; subtract one from tower height as bottom character is never drawn
+				
 .1				beq .drawnBottom			
 				jsr subcursor ; move up a line
 				jsr storechar				
@@ -692,8 +699,8 @@ drawline		subroutine
 				lda towercharacters,x ;
 				sta towerMiddleCharacter 
 .drawit1		jsr drawtower
-
 				rts
+				
 .gap			lda distanceBetweenTowers
 				sta towercolumnsleft
 				lda #0
@@ -1230,9 +1237,16 @@ waitForStartKey subroutine
 				bne waitForStartKey
 				rts
 
-towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ; front edge, middle block, middle block, back edge, then tower top chars
-towerChars2				dc.b	3,2,3,2 ,0,0,0,0
-towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ; stars
+; level format:
+; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower
+;       4 - 7: front, middle, middle, back edge characters for top and bottom edges of tower
+;       8    : horizontal gap between towers
+;       9    : vertical gap between towers
+;       10   : background colour map index (not yet used)
+
+towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,0
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0; stars
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 setupTowerCharacters	subroutine				
@@ -1240,7 +1254,7 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>towerChars1
 				sta cursor + 1
-				lda #8 ; number of positions to skip over to get next set of characters
+				lda #11 ; number of positions to skip over to get next set of characters
 .xloop
 				cpx #0 ; use this character set?
 				beq .useThis
@@ -1260,5 +1274,13 @@ setupTowerCharacters	subroutine
 				cpy #8
 				bne .yloop
 .done
+				lda (cursor),y
+				sta distanceBetweenTowers
+				iny
+				lda (cursor),y
+				sta gapWidth
+				iny
+				lda (cursor),y
+				; sta somewhere, not yet implemented
 				rts
 				
