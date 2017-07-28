@@ -52,6 +52,8 @@ fuelSoundCount	equ     169
 progressCounterLo	dc.b 0
 progressCounterHi	dc.b 0
 levelNumber			dc.b 0
+physicsCountdown	dc.b 0
+physicsCountdownInitialValue	dc.b 1
 
 .outOfFuel
 				jmp restart
@@ -99,7 +101,7 @@ endGame
 scrolled subroutine
 				lda #8
 				sta scrollCounter
-.1				
+.smoothScrollLoop			
 				jsr drawship
 				lda charReplaced
 				cmp #32
@@ -123,8 +125,8 @@ scrolled subroutine
 				jsr physics
 				jsr updateSound
 				jsr smoothScroll
-				dec scrollCounter
-				bne .1
+				dec scrollCounter				
+				bne .smoothScrollLoop
 				
 scrollNow		subroutine
 				jsr scroll
@@ -318,7 +320,10 @@ setUpLevel
 				ldx levelNumber
 				jsr setupTowerCharacters ; also sets up constants
 				ldx levelNumber	
-				jsr prepareColors ; prepare color map			
+				jsr prepareColors ; prepare color map		
+				
+				lda physicsCountdownInitialValue
+				sta physicsCountdown	
 				rts
 
 defaultBackground		equ 	3
@@ -780,8 +785,10 @@ random			subroutine
 				sta randseed
 				rts
 				
-delaycount		dc 0	
-delay			ldx #$30 ; 30
+delaycount		dc 0
+delayAmount		dc $30
+
+delay			ldx delayAmount
 				stx delaycount
 				lda #0
 				sta borderPaper
@@ -881,6 +888,14 @@ control			subroutine
 				rts
 			
 physics			subroutine
+				; first, is it actually time to update physics
+				dec physicsCountdown
+				beq .timeToUpdate
+				rts
+.timeToUpdate
+				lda physicsCountdownInitialValue ; reset countdown timer
+				sta physicsCountdown
+				
 				; update ship position. First the minor position
 				lda shipMinorY
 				clc
@@ -1290,10 +1305,12 @@ waitForStartKey subroutine
 ;       9    : vertical gap between towers
 ;       10   : background colour map index (not yet used)
 ;       11-12: number of moves before switching to next level (lo,hi)
+;       13   : physics countdown timer initial value
+;       14   : delay default value
 
-towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,1; front edge, middle block, middle block, back edge, then tower top chars
-towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,0, 0,2
-towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2; stars
+towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,1, 1,48; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,0, 0,2 ,2, 24 
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2, 1, 48; stars
 maxLevel				equ 	3
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
@@ -1302,7 +1319,7 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>towerChars1
 				sta cursor + 1
-				lda #13 ; number of positions to skip over to get next set of characters
+				lda #15 ; number of positions to skip over to get next set of characters
 .xloop
 				cpx #0 ; use this character set?
 				beq .useThis
@@ -1336,5 +1353,11 @@ setupTowerCharacters	subroutine
 				iny
 				lda (cursor),y
 				sta progressCounterHi
+				iny
+				lda (cursor),y
+				sta physicsCountdownInitialValue
+				iny
+				lda (cursor),y
+				sta delayAmount
 				rts
 				
