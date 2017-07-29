@@ -63,6 +63,8 @@ progressCounterHi	equ 139
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
+flags			dc 0 ; bit 0: decrease fuel if set
+fuelActiveFlag	equ #1
 
 .outOfFuel
 				jmp restart
@@ -182,6 +184,11 @@ smoothScroll	subroutine
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				jsr increaseScoreAndProgress
 				
+				; if flag is set, decrease or increase fuel
+				lda flags
+				and #fuelActiveFlag
+				beq .return
+				
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
 				lda #0
@@ -207,6 +214,7 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 .doneIncrease		
 .doneIncreaseAndReadyToReturn
 				dec fuelIncreaseLeft
+.return
 				lda #1 ; clear zero flag
 				rts
 
@@ -252,7 +260,19 @@ increaseScoreAndProgress	subroutine
 				bne .increaseDigits				
 .doneIncreaseDigits			
 				; now decrease progress counter. If reached zero, move to next level before returning
-				dec progressCounterLo
+				ldx progressCounterLo
+				dex
+				stx progressCounterLo
+				cpx #35 ; near end of level?
+				bne .notNearEnd
+				lda progressCounterHi
+				cmp #1
+				bne .notNearEnd
+				; near end of level. Set gap length between towers
+				lda #41 ; more than a screen
+				sta distanceBetweenTowers
+.notNearEnd
+				cpx #0
 				bne .doneProgress
 				dec progressCounterHi
 				bne .doneProgress
@@ -275,7 +295,7 @@ increaseLevel	subroutine
 init			subroutine
 				sei ; don't need maskable interrupts
 				
-				; make sure the screen is in the right place
+				; make sure the screen memory is in the right place
 				lda #22 ; 22 for expanded VIC, 150 for unexpanded
 				sta 36866
 				
@@ -283,7 +303,7 @@ init			subroutine
 				sta 36869
 				
 				lda #$10 ; default screen page. dec 30 for unexpanded vic
-				sta screenMemoryPage ; tell the kernel where the screen is
+				sta screenMemoryPage ; tell the kernel where the screen is. Must match the above.
 				
 				jsr setUpSound
 				
@@ -370,13 +390,18 @@ backgroundMap
 				dc	110
 				dc 253 ; end
 ; map 1
-				dc	255, 3, 254, 0, 22 ; title
-				dc	254, 3, 255, 1 ; change colours to clouds
-				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
-				dc 	255, 6 ; change colour to buildings
-				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
-				dc 	255, 5 ; change colour to grass
-				dc	110
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 1, 255, 2, 22, 22,
+				dc	254, 7, 255, 1, 22, 22,
+				dc	254, 4, 255, 7, 22, 22,
+				dc	254, 2, 255, 1, 22, 22,
+				dc	254, 7, 255, 4, 22, 22,
+				dc	254, 1, 255, 1, 22, 22,
+				dc	254, 4, 255, 2, 22, 22,
+				dc	254, 1, 255, 4, 22, 22,
+				dc	254, 7, 255, 1, 22, 22,
+				dc	254, 2, 255, 7, 22, 22,
+
 				dc 253 ; end
 ; map 2
 
@@ -782,8 +807,21 @@ drawline		subroutine
 				lda towerheight
 				cmp #0
 				bne .gap
-				jsr random
+				
+				; if we are nearly at the end of the level, draw no more towers, so just
+				; have a big gap
+				lda progressCounterHi
+				cmp #0
+				bne .doneCheckEndLevel
+				lda progressCounterLo
+				cmp #50 ; one screen worth left?
+				bmi .doneCheckEndLevel
+				lda #0 ; tower height zero, i.e. no tower as at end of level
+				jmp .chosenTowerHeight
+.doneCheckEndLevel
+				jsr random				
 				and #$0f
+.chosenTowerHeight
 				sta towerheight
 				cmp #$0f
 				bne .notdec
@@ -840,8 +878,6 @@ delayAmount		dc $30
 
 delay			ldx delayAmount
 				stx delaycount
-				lda #0
-				sta borderPaper
 .1				dex
 				bne .1
 				ldx delaycount
@@ -1353,14 +1389,15 @@ waitForStartKey subroutine
 ;       4 - 7: front, middle, middle, back edge characters for top and bottom edges of tower
 ;       8    : horizontal gap between towers
 ;       9    : vertical gap between towers
-;       10   : background colour map index (not yet used)
+;       10   : border and paper colour
 ;       11-12: number of moves before switching to next level (lo,hi)
 ;       13   : physics countdown timer initial value
 ;       14   : delay default value
+;		15   : flags
 
-towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,1, 1,48; front edge, middle block, middle block, back edge, then tower top chars
-towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,0, 0,2 ,2, 24 
-towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2, 1, 48; stars
+towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,2, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,8, 0,3 ,2, 24, 0  ; black border, black paper
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2, 1, 48, 1; stars
 maxLevel				equ 	3
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
@@ -1369,7 +1406,7 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>towerChars1
 				sta cursor + 1
-				lda #15 ; number of positions to skip over to get next set of characters
+				lda #16 ; number of positions to skip over to get next set of characters
 .xloop
 				cpx #0 ; use this character set?
 				beq .useThis
@@ -1396,7 +1433,7 @@ setupTowerCharacters	subroutine
 				sta gapWidth
 				iny
 				lda (cursor),y
-				; sta somewhere, not yet implemented
+				sta borderPaper
 				iny
 				lda (cursor),y
 				sta progressCounterLo
@@ -1409,5 +1446,8 @@ setupTowerCharacters	subroutine
 				iny
 				lda (cursor),y
 				sta delayAmount
+				iny
+				lda (cursor),y
+				sta flags
 				rts
 				
