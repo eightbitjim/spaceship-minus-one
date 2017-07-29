@@ -47,13 +47,22 @@ jetSound		equ		205
 shipdy			equ		207
 shipDirection	equ		170
 fuelSoundCount	equ     169
+diff			equ 	166 
+charReplaced    equ 	165
+character		equ		164 ; put in zero page ; Every 1 and 8 frames during refresh * speed up. Maybe even self modifying code.
+charReplaced2	equ		151 
+towerTopCharacter	equ 150 
+towerMiddleCharacter equ	147
+distanceBetweenTowers	equ	146
+gapWidth		equ		143
+physicsCountdown	equ	142
+physicsCountdownInitialValue equ 141
+progressCounterLo	equ 140
+progressCounterHi	equ 139
 
 ; non zero page variables
-progressCounterLo	dc.b 0
-progressCounterHi	dc.b 0
-levelNumber			dc.b 0
-physicsCountdown	dc.b 0
-physicsCountdownInitialValue	dc.b 1
+levelNumber			dc.b 0 ; infrequent
+randseed		dc 234, 17 ; Occasionally
 
 .outOfFuel
 				jmp restart
@@ -331,6 +340,8 @@ lowerBackground			equ 	5
 changeNormalColor		equ		255
 changeBackgroundColor	equ		254
 
+; Local variables to backgroundMap, and don't need to be in zero page as they are
+; only used infrequently
 ycoord				dc 		0
 xcoord				dc 		0
 
@@ -515,9 +526,7 @@ scroll			subroutine
 ;;;; Draw a character at the given x and y coordinates
 ; x coord		x
 ; y coord		y
-character		dc 0 ; put in zero page
-charReplaced    dc 0 ; put in zero page
-charReplaced2	dc 0 ; put in zero page. used for second ship character collision
+
 
 drawchar		subroutine
 				;; initialise values
@@ -561,7 +570,6 @@ addcursor		subroutine
 				inc.z cursor + 1
 .1				rts
 
-diff			dc 0
 subcursor		subroutine
 				sec
 				lda.z cursor
@@ -599,7 +607,6 @@ drawtower
 				ldy towerheight
 				cpy #2 ; One high, so print the top character instead of the middle
 				bmi .shortTower
-
 .draw
 				sta character
 
@@ -610,14 +617,30 @@ drawtower
 				
 				lda #screenwidth
 				sta diff
+				
 				ldy towerheight
 				cpy #0
 				beq .drawnBottom
 				dey			; subtract one from tower height as bottom character is never drawn
 				
-.1				beq .drawnBottom			
-				jsr subcursor ; move up a line
-				jsr storechar				
+.1				beq .drawnBottom ; finished drawing bottom of tower?
+
+				;;;; inlining the subcursor function to save 12 cycles
+				;jsr subcursor ; move up a line				
+				sec
+				lda cursor
+				sbc diff
+				sta cursor
+				bcs .subfinished
+				dec cursor + 1
+				;;;;; end subcursor inlining			
+.subfinished
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete1
 				cpy #2
 				beq .switchToTopCharacter
 				dey
@@ -637,8 +660,23 @@ drawtower
 				ldy #screenheight - 2
 				
 .3				beq .drawnGap
-				jsr subcursor
-				jsr storechar
+				
+				;;;; inlining the subcursor function to save 12 cycles
+				;jsr subcursor ; move up a line				
+				sec
+				lda cursor
+				sbc diff
+				sta cursor
+				bcs .subfinished2
+				dec cursor + 1
+				;;;;; end subcursor inlining		
+.subfinished2
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete2
 				lda towercolumnsleft
 				cmp fuelColumn
 				bne .305
@@ -650,7 +688,12 @@ drawtower
 				; print fuel
 				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta character
-				jsr storechar
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete3
 				lda #spacecharacter ; back to printing spaces
 				sta character
 				
@@ -696,8 +739,22 @@ drawtower
 .4				lda.z cursor ; reached top line of screen?
 				cmp #21
 				beq .5				
-				jsr storechar
-				jsr subcursor			
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete4
+				;;;; inlining the subcursor function to save 12 cycles
+				;jsr subcursor ; move up a line				
+				sec
+				lda cursor
+				sbc diff
+				sta cursor
+				bcs .subfinished3
+				dec cursor + 1
+				;;;;; end subcursor inlining		
+.subfinished3		
 				dey
 				bne .4
 				lda towerMiddleCharacter
@@ -714,11 +771,6 @@ towerTopCharacters 		dc.b	0, 32, 0, 32; to be filled in with real tower characte
 spacecharacter			equ		32		
 bottomscreencharacter	equ		4
 fuelcharacter			equ 	6
-
-towerTopCharacter		dc.b 0 ; TODO: move to zero page
-towerMiddleCharacter	dc.b	0
-distanceBetweenTowers	dc.b	8
-gapWidth				dc.b	8
 
 ;;;; Draw next right hand line of screen
 drawline		subroutine
@@ -765,8 +817,6 @@ drawline		subroutine
 				jmp .drawit			
 
 ;;;; Random number generator
-randseed		dc 234, 17
-
 random			subroutine
 				lda randseed
 				ror
@@ -785,7 +835,7 @@ random			subroutine
 				sta randseed
 				rts
 				
-delaycount		dc 0
+delaycount		dc 0 ; doesn't need to be in zero page, as used to cause a delay anyway
 delayAmount		dc $30
 
 delay			ldx delayAmount
@@ -807,8 +857,6 @@ delay			ldx delayAmount
 		;		lda #240
 		;		sta borderPaper
 				rts
-
-shipchar		dc 0
 
 drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor Y value
 				lda shipMinorY
@@ -986,6 +1034,7 @@ towerRightOriginal	equ chars + 24
 				
 numBytes		equ		56 ; 7 * 8
 
+; don't need to be in zero page as only used once
 copyNumber		dc		0
 topCopyPosition	dc		0
 bottomCopyPosition	dc 	0
@@ -1147,6 +1196,7 @@ updateSound subroutine
 .donefuelsound
 				rts
 
+; don't need to be in zero page as only used during explosion, which isn't time critical
 explodeCountLo		dc 0
 explosionSize		dc 0
 explosionLeftEdge	dc 0
