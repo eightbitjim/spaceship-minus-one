@@ -1,6 +1,6 @@
 				processor 6502
-				org $1400 ; should be free
-
+				org $1300 ; 1400 originally. should be free
+				
 start   		subroutine
 				jsr init
 restart
@@ -8,64 +8,67 @@ restart
 				jsr init
 				jmp scrollNow
 				
-welcome			dc.b	147,18,31," FUEL 100       ",144,"000000",146,0
+welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
 startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
 				dc.b	17,17,17,17, 159, 18, " PRESS SPACE TO START ",0
 
-fuelMessage		dc.b	147," YOU RAN OUT OF FUEL ",13,0
-crashMessage	dc.b	147," YOU CRASHED ", 13, 0
-
 welcometerminator 	dc 0
 
-scrollCounter	dc 		0
+directionUp			equ		$ff
+directionDown		equ		$01
+rasterline			equ 	$9004
+borderPaper			equ		$900f
+screenMemoryPage	equ		648 ; screen memory page for operating system
+CHROUT				equ 	$ffd2 ; ROM routine
+screenstart 		equ		$1000 ; $1e00 for unexpanded VIC, $1000 for expanded
+screenstarthigh		equ 	$10 ; $1e for unexpanded VIC, $10 for expanded
+colorstarthigh		equ		$94 ; $94 for expanded VIC, $96 for unexpanded VIC
+screenwidth			equ		22
+screenheight		equ		23
+fuelIncreaseAmount 	equ 	10
+shipimpulse			equ		80
+gravity				equ		3	
+keypress			equ		197 ; zero page location
+keyspace			equ		32
+nokey				equ		64
 
-rasterline		equ 	$9004
-borderPaper		equ		$900f
-screenMemoryPage	equ	648 ; screen memory page for operating system
-
-CHROUT			equ 	$ffd2
-
-screenstart 	equ	$1e00
-screenstarthigh	equ $1e
-colorstarthigh	equ	$96
-
-cursor 			equ		251
+; zero page variables
+cursor 			equ		251 ; also 252
+shipMinorY		equ 	253
+shipy			equ		254
 colorcursor		equ		243
+shipx			equ		171
+scoreLo			equ		176
+scoreHi			equ 	177
+fuel			equ 	178
+fuelIncreaseLeft equ 	179
+scrollCounter	equ		204
+jetSound		equ		205
+shipdy			equ		207
+shipDirection	equ		170
+fuelSoundCount	equ     169
+diff			equ 	166 
+charReplaced    equ 	165
+character		equ		164 ; put in zero page ; Every 1 and 8 frames during refresh * speed up. Maybe even self modifying code.
+charReplaced2	equ		151 
+towerTopCharacter	equ 150 
+towerMiddleCharacter equ	147
+distanceBetweenTowers	equ	146
+gapWidth		equ		143
+physicsCountdown	equ	142
+physicsCountdownInitialValue equ 141
+progressCounterLo	equ 140
+progressCounterHi	equ 139
 
-screenwidth		equ		22
-screenheight	equ		23
-
-shipx			dc		10
-shipMinorY		dc 		0
-shipy			dc 		10
-
-fuel			dc 		0
-fuelIncreaseLeft	dc 	0
-fuelIncreaseAmount equ 10
-
-directionUp		equ		$ff
-directionDown	equ		$01
-
-shipdy			dc		$00
-shipDirection	dc		directionDown
-
-shipimpulse		equ		80
-gravity			equ		3	
-
-jetSound		dc		0
-
-keypress		equ		197
-
-keyspace		equ		32
-nokey			equ		64
-
-scoreLo			dc 0
-scoreHi			dc 0
+; non zero page variables
+levelNumber			dc.b 0 ; infrequent
+randseed		dc 234, 17 ; Occasionally
+flags			dc 0 ; bit 0: decrease fuel if set
+fuelActiveFlag	equ #1
 
 .outOfFuel
 				jmp restart
 ;				rts
-
 
 collision subroutine
 				; if end of game, return with zero flag not set
@@ -80,13 +83,13 @@ collision subroutine
 .collectFuelLeft
 				lda #32
 				sta character
-				inc cursor
+				inc.z cursor
 				jsr storechar
 				jmp .increaseFuel		
 .collectFuelRight
 				lda #32
 				sta character
-				dec cursor
+				dec.z cursor
 				jsr storechar				
 				jmp .increaseFuel		
 .increaseFuel
@@ -109,7 +112,7 @@ endGame
 scrolled subroutine
 				lda #8
 				sta scrollCounter
-.1				
+.smoothScrollLoop			
 				jsr drawship
 				lda charReplaced
 				cmp #32
@@ -133,8 +136,9 @@ scrolled subroutine
 				jsr physics
 				jsr updateSound
 				jsr smoothScroll
-				dec scrollCounter
-				bne .1
+				dec scrollCounter				
+				bne .smoothScrollLoop
+				
 scrollNow		subroutine
 				jsr scroll
 				jsr drawscreen
@@ -178,7 +182,12 @@ smoothScroll	subroutine
 				rts
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
-				jsr increaseScore
+				jsr increaseScoreAndProgress
+				
+				; if flag is set, decrease or increase fuel
+				lda flags
+				and #fuelActiveFlag
+				beq .return
 				
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
@@ -205,6 +214,7 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 .doneIncrease		
 .doneIncreaseAndReadyToReturn
 				dec fuelIncreaseLeft
+.return
 				lda #1 ; clear zero flag
 				rts
 
@@ -230,7 +240,7 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				rts
 					
 ; Increase score by one and update the onscreen counter
-increaseScore	subroutine
+increaseScoreAndProgress	subroutine
 				inc scoreLo
 				bne .doneIncrease
 				inc scoreHi	
@@ -248,23 +258,56 @@ increaseScore	subroutine
 				dex
 				cpx #20 - 5 ; reached the last digit?
 				bne .increaseDigits				
-.doneIncreaseDigits
+.doneIncreaseDigits			
+				; now decrease progress counter. If reached zero, move to next level before returning
+				ldx progressCounterLo
+				dex
+				stx progressCounterLo
+				cpx #35 ; near end of level?
+				bne .notNearEnd
+				lda progressCounterHi
+				cmp #1
+				bne .notNearEnd
+				; near end of level. Set gap length between towers
+				lda #41 ; more than a screen
+				sta distanceBetweenTowers
+.notNearEnd
+				cpx #0
+				bne .doneProgress
+				dec progressCounterHi
+				bne .doneProgress
+				jsr increaseLevel				
+.doneProgress
 				rts
 			
+increaseLevel	subroutine
+				ldx levelNumber
+				inx
+				cpx #maxLevel
+				bne .doneIncrease
+				ldx #0 ; increase level
+				; Increase speed (TODO)
+.doneIncrease
+				stx levelNumber
+				jsr setUpLevel
+				rts
+				
 init			subroutine
-				; make sure the screen is in the right place
-				lda #150
+				sei ; don't need maskable interrupts
+				
+				; make sure the screen memory is in the right place
+				lda #22 ; 22 for expanded VIC, 150 for unexpanded
 				sta 36866
 				
-				lda #255
+				lda #192+1+2+4+8 ; 192+1+2+4+8 for expanded VIC, 240 normally for unexpanded, 255 for unexpanded with chars at 7168
 				sta 36869
 				
-				lda #30 ; default screen page
-				sta screenMemoryPage
+				lda #$10 ; default screen page. dec 30 for unexpanded vic
+				sta screenMemoryPage ; tell the kernel where the screen is. Must match the above.
 				
 				jsr setUpSound
 				
-				lda #10		; set ship start position
+				lda #6		; set ship start position
 				sta shipx
 				lda #10
 				sta shipy
@@ -274,13 +317,12 @@ init			subroutine
 								
 				; clear screen and display score
 				lda #<welcome
-				sta cursor;
+				sta.z cursor;
 				lda #>welcome
-				sta cursor + 1
+				sta.z cursor + 1
 				jsr printline
 				
 				jsr defineCharacters ;prepare UDGs
-				jsr prepareColors ; prepare color map
 				jsr createBottomOfScreen
 				
 				lda #0
@@ -288,29 +330,44 @@ init			subroutine
 				sta towerheight
 				sta scoreLo
 				sta scoreHi
+				sta levelNumber
 				
-				lda #100
+				lda #128 ; start with half full fuel
 				sta fuel
 				
 				lda #4
 				sta fuelColumn
 				
-				lda #16
+				lda #16 ; give some space at the start of the level
 				sta towercolumnsleft
 				
 				lda #fuelLeft
 				sta fuelChar
+								
+				; Set up current level
+setUpLevel
+				ldx levelNumber
+				jsr setupTowerCharacters ; also sets up constants
+				ldx levelNumber	
+				jsr prepareColors ; prepare color map		
+				
+				lda physicsCountdownInitialValue
+				sta physicsCountdown	
 				rts
 
-defaultBackground	equ 3
-lowerBackground		equ 5
+defaultBackground		equ 	3
+lowerBackground			equ 	5
+changeNormalColor		equ		255
+changeBackgroundColor	equ		254
 
-ycoord		dc 0
-xcoord		dc 0
+; Local variables to backgroundMap, and don't need to be in zero page as they are
+; only used infrequently
+ycoord				dc 		0
+xcoord				dc 		0
 
-color0		dc 0 	; written for a 0 bit in the background map
-color1		dc 0	; written for a 1 bit in the background map
-bgOrfg		dc 0	; bg = 0; fg = 1
+color0				dc 		0 ; written for a 0 bit in the background map
+color1				dc 		0 ; written for a 1 bit in the background map
+bgOrfg				dc 		0 ; bg = 0; fg = 1
 
 ; background map format is:
 ; starts in backbround mode (i.e. space)
@@ -322,10 +379,8 @@ bgOrfg		dc 0	; bg = 0; fg = 1
 ;	instruction = 254, x: change background color to following byte
 ;	instruction = 255, x: change foreground color to following byte
 
-changeNormalColor		equ	255
-changeBackgroundColor	equ	254
-
 backgroundMap	
+; map 0
 				dc	255, 4, 254, 0, 22 ; title
 				dc	254, 3, 255, 1 ; change colours to clouds
 				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
@@ -333,20 +388,47 @@ backgroundMap
 				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
 				dc 	255, 5 ; change colour to grass
 				dc	110
-				
 				dc 253 ; end
-			
-prepareColors	subroutine
-				lda #colorstarthigh ; use colorcursor to point to screen position in colour map
-				sta colorcursor + 1
-				lda #0
-				sta colorcursor
-				
-				lda #<backgroundMap	; use cursor to point to backgroundMap position
-				sta cursor
-				lda #>backgroundMap
-				sta cursor + 1
+; map 1
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 1, 255, 2, 22, 22,
+				dc	254, 7, 255, 1, 22, 22,
+				dc	254, 4, 255, 7, 22, 22,
+				dc	254, 2, 255, 1, 22, 22,
+				dc	254, 7, 255, 4, 22, 22,
+				dc	254, 1, 255, 1, 22, 22,
+				dc	254, 4, 255, 2, 22, 22,
+				dc	254, 1, 255, 4, 22, 22,
+				dc	254, 7, 255, 1, 22, 22,
+				dc	254, 2, 255, 7, 22, 22,
 
+				dc 253 ; end
+; map 2
+
+
+; sets up background colours
+; start by loading x with the index of the colour map, starting at zero
+
+prepareColors	subroutine
+				lda #<backgroundMap	; use cursor to point to backgroundMap position
+				sta.z cursor
+				lda #>backgroundMap
+				sta.z cursor + 1
+				ldy #0 ; start at the beginning of the maps
+.findLoop
+				; seek to the right map
+				cpx #0
+				beq .foundMap
+				jsr .nextInstruction
+				cmp #253 ; end of map?
+				bne .findLoop
+				dex ; found end of current map
+				jmp .findLoop				
+.foundMap
+				lda #colorstarthigh ; use colorcursor to point to screen position in colour map
+				sta.z colorcursor + 1
+				lda #0
+				sta.z colorcursor
 				ldx #1
 				stx bgOrfg
 .switchbgfg
@@ -391,9 +473,9 @@ prepareColors	subroutine
 				sta (colorcursor),y ; y = 0
 
 				; colorcursor+=1
-				inc colorcursor
+				inc.z colorcursor
 				bne .doneIncColorCursor
-				inc colorcursor + 1
+				inc.z colorcursor + 1
 .doneIncColorCursor
 				dex
 				jmp .outloop			
@@ -402,9 +484,9 @@ prepareColors	subroutine
 .nextInstruction
 				lda (cursor),y
 				; cursor+=1
-				inc cursor
+				inc.z cursor
 				bne .doneIncCursor
-				inc cursor + 1	
+				inc.z cursor + 1	
 .doneIncCursor	
 				rts
 				
@@ -441,8 +523,8 @@ scroll			subroutine
 				clc
 				ldx #screenstarthigh	; put start of screen hi in cursor position
 				ldy #22 				; screen scroll start lo
-				stx cursor + 1
-				sty cursor
+				stx.z cursor + 1
+				sty.z cursor
 				ldy #0			; current *X* position
 				ldx #21			; number of lines left to scroll
 .1				
@@ -456,12 +538,12 @@ scroll			subroutine
 				ldy #0 			; (?) reset back to start of line counter
 				dex 			; (2) next line
 				beq .finished
-				lda cursor
+				lda.z cursor
 				clc
 				adc #22
-				sta cursor
+				sta.z cursor
 				bcc	.1 			; continue with next line
-				inc cursor + 1
+				inc.z cursor + 1
 				jmp .1 			; continue with next line						
 .finished
 				rts				; done
@@ -469,16 +551,14 @@ scroll			subroutine
 ;;;; Draw a character at the given x and y coordinates
 ; x coord		x
 ; y coord		y
-character		dc 0
-charReplaced    dc 0
-charReplaced2	dc 0 ; used for second ship character collision
+
 
 drawchar		subroutine
 				;; initialise values
 				lda	#screenstarthigh
-				sta cursor + 1
+				sta.z cursor + 1
 				lda #colorstarthigh
-				sta colorcursor + 1
+				sta.z colorcursor + 1
 				clc
 				txa				; x coord to screen low byte
 
@@ -490,12 +570,12 @@ drawchar		subroutine
 				jmp .1			; 
 				
 .2				clc	
-				inc cursor + 1	; next screen page
-				inc colorcursor + 1 ; and color cursor
+				inc.z cursor + 1	; next screen page
+				inc.z colorcursor + 1 ; and color cursor
 				jmp .1ret
 				
-.3				sta cursor		; got final low byte value
-				sta colorcursor	; and the color cursor
+.3				sta.z cursor		; got final low byte value
+				sta.z colorcursor	; and the color cursor
 				
 storeCharSaveReplaced
 				ldx #0
@@ -509,43 +589,51 @@ storechar		ldx #0			; offset to allow indirect addressing -- should really use z
 
 addcursor		subroutine
 				clc
-				adc cursor	
-				sta cursor
+				adc.z cursor	
+				sta.z cursor
 				bcc .1
-				inc cursor + 1
+				inc.z cursor + 1
 .1				rts
 
-diff			dc 0
 subcursor		subroutine
 				sec
-				lda cursor
+				lda.z cursor
 				sbc diff	
-				sta cursor
+				sta.z cursor
 				bcs .1
-				dec cursor + 1
+				dec.z cursor + 1
 .1				rts
 
 ;;;; Draw a tower at the right hand side of the screen
-towerheight		dc 0
-gapwidth		dc 8
-fuelColumn		dc 128 + 4 ; set MSB to indicate will not be drawn. Reset bit when drawing next tower
-fuelRow			dc 10 ; height above the ground or tower
-fuelChar		dc 3
+towerheight			dc 	0
+
+fuelColumn			dc 	128 + 4 ; set MSB to indicate will not be drawn. Reset bit when drawing next tower
+fuelRow				dc 	10 ; height above the ground or tower
+fuelChar			dc 	3
+towercolumnsleft	dc	16
 
 ; color and colorcharacter already set
-; a is character to draw
-tempVar			dc.b	0
+; towerMiddleCharacter already set for the non-top/bottom character, and also in a
+; towerTopCharacter already set
 
-drawtower		subroutine
+drawtowerScope  subroutine
+.shortTower
+				cpy #0
+				bne .not0
+				lda #spacecharacter
+				sta towerMiddleCharacter	
+				jmp .draw
+.not0
+				lda towerTopCharacter
+				jmp .draw
+drawtower		
 				;; If the tower is zero height, draw a space at the bottom and then draw a gap full height
 				;; if the screen
 				ldy towerheight
-				cpy #0
-				bne .draw
-				lda #spacecharacter
+				cpy #2 ; One high, so print the top character instead of the middle
+				bmi .shortTower
 .draw
 				sta character
-				sta tempVar
 
 				;; draw first block at bottom right, then build up from there
 				ldx #screenwidth - 1
@@ -554,28 +642,66 @@ drawtower		subroutine
 				
 				lda #screenwidth
 				sta diff
+				
 				ldy towerheight
 				cpy #0
-				beq .2
+				beq .drawnBottom
 				dey			; subtract one from tower height as bottom character is never drawn
-.1				beq .2				
-				jsr subcursor
-				jsr storechar				
+				
+.1				beq .drawnBottom ; finished drawing bottom of tower?
+
+				;;;; inlining the subcursor function to save 12 cycles
+				;jsr subcursor ; move up a line				
+				sec
+				lda cursor
+				sbc diff
+				sta cursor
+				bcs .subfinished
+				dec cursor + 1
+				;;;;; end subcursor inlining			
+.subfinished
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete1
+				cpy #2
+				beq .switchToTopCharacter
 				dey
 				jmp .1
-								
-.2				; now draw the gap
+.switchToTopCharacter
+				lda towerTopCharacter ; use this next
+				sta character
+				dey
+				jmp .1										
+.drawnBottom	; now draw the gap
 				lda #spacecharacter
 				sta character
-				ldy gapwidth
+				ldy gapWidth
 				lda towerheight		; if tower height is zero, don't draw the top
 				cmp #0
 				bne .3
 				ldy #screenheight - 2
 				
-.3				beq .31
-				jsr subcursor
-				jsr storechar
+.3				beq .drawnGap
+				
+				;;;; inlining the subcursor function to save 12 cycles
+				;jsr subcursor ; move up a line				
+				sec
+				lda cursor
+				sbc diff
+				sta cursor
+				bcs .subfinished2
+				dec cursor + 1
+				;;;;; end subcursor inlining		
+.subfinished2
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete2
 				lda towercolumnsleft
 				cmp fuelColumn
 				bne .305
@@ -587,7 +713,12 @@ drawtower		subroutine
 				; print fuel
 				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta character
-				jsr storechar
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete3
 				lda #spacecharacter ; back to printing spaces
 				sta character
 				
@@ -603,7 +734,7 @@ drawtower		subroutine
 				lda #6
 ;;				jsr random ; need to choose 1 to 6
 				and #$7 ; random number 0 to 7
-				ora #$80 ; net MSB to delay drawing until after next tower
+				ora #$80 ; set MSB to delay drawing until after next tower
 				cmp #$87
 				bne .not7
 				lda #3 ; replace a 0 with a 3 to put the fuel between towers not just before a tower
@@ -624,26 +755,47 @@ drawtower		subroutine
 				sta fuelChar
 				dec fuelColumn ; set to print the right hand edge next column
 				jmp .305
-				
-				; now the top bit
-.31				lda tempVar
+
+.drawnGap
+				; now draw the the top part
+				ldy #1 ; draw 1 top character then switch to middle				
+				lda towerTopCharacter
 				sta character
-.4				lda cursor ; reached top line of screen?
+.4				lda.z cursor ; reached top line of screen?
 				cmp #21
-				beq .5
-				
-				jsr storechar
-				jsr subcursor			
+				beq .5				
+				;;;; inlining storechar to save 12 cycles
+				;jsr storechar				
+				ldx #0			; offset to allow indirect addressing -- should really use zero page
+				lda	character	; char to print
+				sta (cursor),x
+.storecharcomplete4
+				;;;; inlining the subcursor function to save 12 cycles
+				;jsr subcursor ; move up a line				
+				sec
+				lda cursor
+				sbc diff
+				sta cursor
+				bcs .subfinished3
+				dec cursor + 1
+				;;;;; end subcursor inlining		
+.subfinished3		
+				dey
+				bne .4
+				lda towerMiddleCharacter
+				sta character
 				jmp .4
 .5				
 				rts
 			
-towercolumnsleft		dc	16
-defaulttowerwidth		equ	4
-towercharacters			dc.b	3,0,0,2 ; front edge, middle block, middle block, back edge
+defaulttowerwidth		equ		4
+
+towercharacters			dc.b	3,0,0,2;
+towerTopCharacters 		dc.b	0, 32, 0, 32; to be filled in with real tower characters. Must immediately follow towercharacters
+
 spacecharacter			equ		32		
-bottomscreencharacter	equ	4
-fuelcharacter			equ 6
+bottomscreencharacter	equ		4
+fuelcharacter			equ 	6
 
 ;;;; Draw next right hand line of screen
 drawline		subroutine
@@ -655,8 +807,21 @@ drawline		subroutine
 				lda towerheight
 				cmp #0
 				bne .gap
-				jsr random
+				
+				; if we are nearly at the end of the level, draw no more towers, so just
+				; have a big gap
+				lda progressCounterHi
+				cmp #0
+				bne .doneCheckEndLevel
+				lda progressCounterLo
+				cmp #50 ; one screen worth left?
+				bmi .doneCheckEndLevel
+				lda #0 ; tower height zero, i.e. no tower as at end of level
+				jmp .chosenTowerHeight
+.doneCheckEndLevel
+				jsr random				
 				and #$0f
+.chosenTowerHeight
 				sta towerheight
 				cmp #$0f
 				bne .notdec
@@ -670,11 +835,14 @@ drawline		subroutine
 				cmp #0
 				beq .drawit1
 				ldx	towercolumnsleft
-				lda towercharacters,x
+				lda towerTopCharacters,x ; character to draw at top and bottom edge of towers (around the gap)
+				sta towerTopCharacter
+				lda towercharacters,x ;
+				sta towerMiddleCharacter 
 .drawit1		jsr drawtower
-				
 				rts
-.gap			lda #8
+				
+.gap			lda distanceBetweenTowers
 				sta towercolumnsleft
 				lda #0
 				sta towerheight
@@ -687,8 +855,6 @@ drawline		subroutine
 				jmp .drawit			
 
 ;;;; Random number generator
-randseed		dc 234, 17
-
 random			subroutine
 				lda randseed
 				ror
@@ -707,11 +873,11 @@ random			subroutine
 				sta randseed
 				rts
 				
-delaycount		dc 0	
-delay			ldx #$30 ; 30
+delaycount		dc 0 ; doesn't need to be in zero page, as used to cause a delay anyway
+delayAmount		dc $30
+
+delay			ldx delayAmount
 				stx delaycount
-				lda #0
-				sta borderPaper
 .1				dex
 				bne .1
 				ldx delaycount
@@ -727,8 +893,6 @@ delay			ldx #$30 ; 30
 		;		lda #240
 		;		sta borderPaper
 				rts
-
-shipchar		dc 0
 
 drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor Y value
 				lda shipMinorY
@@ -783,7 +947,7 @@ lastkey			dc	0
 	
 control			subroutine
 				lda fuel	; if fuel is exhausted, no control is possible
-				cmp #0
+				;cmp #0
 				bne .notEmpty
 				rts
 .notEmpty
@@ -808,6 +972,14 @@ control			subroutine
 				rts
 			
 physics			subroutine
+				; first, is it actually time to update physics
+				dec physicsCountdown
+				beq .timeToUpdate
+				rts
+.timeToUpdate
+				lda physicsCountdownInitialValue ; reset countdown timer
+				sta physicsCountdown
+				
 				; update ship position. First the minor position
 				lda shipMinorY
 				clc
@@ -898,6 +1070,7 @@ towerRightOriginal	equ chars + 24
 				
 numBytes		equ		56 ; 7 * 8
 
+; don't need to be in zero page as only used once
 copyNumber		dc		0
 topCopyPosition	dc		0
 bottomCopyPosition	dc 	0
@@ -964,14 +1137,14 @@ prepareShipCharacters	subroutine
 copyROMCharacters	subroutine
 				;;; First copy original character definitions in
 				lda #<32768 ; start of ROM character set
-				sta cursor
+				sta.z cursor
 				lda #>32768 
-				sta cursor + 1
+				sta.z cursor + 1
 				
 				lda #<7168 
-				sta	colorcursor
+				sta.z	colorcursor
 				lda #>7168
-				sta colorcursor + 1
+				sta.z colorcursor + 1
 				
 				ldy #0
 				ldx #1
@@ -981,8 +1154,8 @@ copyROMCharacters	subroutine
 				iny
 				cpy #0
 				bne .copyLoop
-				inc cursor + 1
-				inc colorcursor + 1
+				inc.z cursor + 1
+				inc.z colorcursor + 1
 				dex
 				cpx #0 
 				bne .copyLoop
@@ -995,14 +1168,14 @@ defineCharacters	subroutine
 				
 				;;; Prepare character definitions
 				lda #<chars
-				sta cursor
+				sta.z cursor
 				lda #>chars
-				sta cursor + 1
+				sta.z cursor + 1
 				
 				lda #<startOfChars
-				sta	colorcursor
+				sta.z	colorcursor
 				lda #>startOfChars
-				sta colorcursor + 1
+				sta.z colorcursor + 1
 				
 				ldy #numBytes
 
@@ -1013,8 +1186,8 @@ defineCharacters	subroutine
 				bne .copyLoop
 						
 				;;; Switch character definitions to RAM
-				lda #$ff
-				sta $9005
+			;	lda #$ff
+			;	sta $9005
 				rts
 				
 soundVolume		equ		36878
@@ -1022,8 +1195,6 @@ voice0			equ		36874
 voice1			equ		36875
 voice2			equ		36876
 voice3			equ		36877
-
-fuelSoundCount	dc 0
 
 setUpSound
 				lda #15
@@ -1061,19 +1232,20 @@ updateSound subroutine
 .donefuelsound
 				rts
 
-explodeCountLo	dc 0
-explosionSize	dc 0
+; don't need to be in zero page as only used during explosion, which isn't time critical
+explodeCountLo		dc 0
+explosionSize		dc 0
 explosionLeftEdge	dc 0
 explosionRightEdge	dc 0
 explosionTopEdge	dc 0
 explosionBottomEdge	dc 0
 
-explosionX		dc 0
-explosionY		dc 0
-explosionColor	dc 165
+explosionX			dc 0
+explosionY			dc 0
+explosionColor		dc 165
 
-screenWidth		equ 23
-screenHeight	equ 24
+screenWidth			equ 23
+screenHeight		equ 24
 
 explode subroutine
 				lda #$ff
@@ -1198,9 +1370,9 @@ startScreen     subroutine
 				
 				; clear screen and display score
 				lda #<startMessage
-				sta cursor;
+				sta.z cursor;
 				lda #>startMessage
-				sta cursor + 1
+				sta.z cursor + 1
 				jsr printline
 				jsr waitForStartKey
 				rts
@@ -1210,5 +1382,72 @@ waitForStartKey subroutine
 				lda keypress
 				cmp #32 ; space
 				bne waitForStartKey
+				rts
+
+; level format:
+; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower
+;       4 - 7: front, middle, middle, back edge characters for top and bottom edges of tower
+;       8    : horizontal gap between towers
+;       9    : vertical gap between towers
+;       10   : border and paper colour
+;       11-12: number of moves before switching to next level (lo,hi)
+;       13   : physics countdown timer initial value
+;       14   : delay default value
+;		15   : flags
+
+towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,2, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,8, 0,3 ,2, 24, 0  ; black border, black paper
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2, 1, 48, 1; stars
+maxLevel				equ 	3
+
+;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
+setupTowerCharacters	subroutine				
+				lda #<towerChars1
+				sta cursor
+				lda #>towerChars1
+				sta cursor + 1
+				lda #16 ; number of positions to skip over to get next set of characters
+.xloop
+				cpx #0 ; use this character set?
+				beq .useThis
+				jsr addcursor
+				dex
+				jmp .xloop
+.useThis
+				ldy #0
+				lda #<towercharacters
+				sta colorcursor
+				lda #>towercharacters
+				sta colorcursor + 1
+.yloop
+				lda (cursor),y
+				sta (colorcursor),y
+				iny
+				cpy #8
+				bne .yloop
+.done
+				lda (cursor),y
+				sta distanceBetweenTowers
+				iny
+				lda (cursor),y
+				sta gapWidth
+				iny
+				lda (cursor),y
+				sta borderPaper
+				iny
+				lda (cursor),y
+				sta progressCounterLo
+				iny
+				lda (cursor),y
+				sta progressCounterHi
+				iny
+				lda (cursor),y
+				sta physicsCountdownInitialValue
+				iny
+				lda (cursor),y
+				sta delayAmount
+				iny
+				lda (cursor),y
+				sta flags
 				rts
 				
