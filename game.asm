@@ -1,5 +1,5 @@
 				processor 6502
-				org $1300 ; 1400 originally. should be free
+				org $1280 ; 1400 originally. should be free
 				
 start   		subroutine
 				jsr onceOnlyInit
@@ -1440,33 +1440,37 @@ setupTowerCharacters	subroutine
 				cpy #16
 				bne .yloop
 .done
-				lda (cursor),y
+				jsr .getNext
 				sta distanceBetweenTowers
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta gapWidth
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta borderPaper
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta progressCounterLo
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta progressCounterHi
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta physicsCountdownInitialValue
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta delayAmount
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				sta flags
-				iny
-				lda (cursor),y
+				
+				jsr .getNext
 				tax
 				jsr prepareColors
+				rts
+
+.getNext		lda (cursor),y
+				iny
 				rts
 
 resetScroll		subroutine
