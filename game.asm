@@ -63,6 +63,8 @@ physicsCountdown	equ	142
 physicsCountdownInitialValue equ 141
 progressCounterLo	equ 140
 progressCounterHi	equ 139
+topTowerEdgeCharacter	equ 138
+topTowerMiddleCharacter	equ	137
 
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
@@ -309,7 +311,7 @@ increaseLevel	subroutine
 				inx
 				cpx #maxLevel
 				bne .doneIncrease
-				ldx #0 ; increase level
+				ldx #0 ; back to first level, but increase speed
 				; Increase speed (TODO)
 .doneIncrease
 				stx levelNumber
@@ -387,8 +389,8 @@ init			subroutine
 setUpLevel
 				ldx levelNumber
 				jsr setupTowerCharacters ; also sets up constants
-				ldx levelNumber	
-				jsr prepareColors ; prepare color map		
+				;ldx levelNumber	
+				;jsr prepareColors ; prepare color map		
 				
 				lda physicsCountdownInitialValue
 				sta physicsCountdown	
@@ -798,7 +800,7 @@ drawtower
 .drawnGap
 				; now draw the the top part
 				ldy #1 ; draw 1 top character then switch to middle				
-				lda towerTopCharacter
+				lda topTowerEdgeCharacter
 				sta character
 .4				lda.z cursor ; reached top line of screen?
 				cmp #21
@@ -821,7 +823,7 @@ drawtower
 .subfinished3		
 				dey
 				bne .4
-				lda towerMiddleCharacter
+				lda topTowerMiddleCharacter
 				sta character
 				jmp .4
 .5				
@@ -829,8 +831,11 @@ drawtower
 			
 defaulttowerwidth		equ		4
 
+; TODO, move to zero page to make quicker
 towercharacters			dc.b	3,0,0,2;
 towerTopCharacters 		dc.b	0, 32, 0, 32; to be filled in with real tower characters. Must immediately follow towercharacters
+topTowerCharacters		dc.b	0,0,0,0;
+topTowerEdgeCharacters	dc.b	0,0,0,0;
 
 spacecharacter			equ		32		
 bottomscreencharacter	equ		4
@@ -874,10 +879,14 @@ drawline		subroutine
 				cmp #0
 				beq .drawit1
 				ldx	towercolumnsleft
-				lda towerTopCharacters,x ; character to draw at top and bottom edge of towers (around the gap)
+				lda towerTopCharacters,x ; character to draw at top edge of towers (around the gap)
 				sta towerTopCharacter
 				lda towercharacters,x ;
 				sta towerMiddleCharacter 
+				lda topTowerEdgeCharacters,x ; character to draw at bottom edge of towers (around the gap)
+				sta topTowerEdgeCharacter
+				lda topTowerCharacters,x ;
+				sta topTowerMiddleCharacter 
 .drawit1		jsr drawtower
 				rts
 				
@@ -1359,30 +1368,59 @@ waitForStartKey subroutine
 				rts
 
 ; level format:
-; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower
-;       4 - 7: front, middle, middle, back edge characters for top and bottom edges of tower
-;       8    : horizontal gap between towers
-;       9    : vertical gap between towers
-;       10   : border and paper colour
-;       11-12: number of moves before switching to next level (lo,hi)
-;       13   : physics countdown timer initial value
-;       14   : delay default value
-;		15   : flags
+; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower on top
+;       4 - 7: front, middle, middle, back edge characters for top and bottom edges of tower on top
+;       8 - 11: front, middle, middle, back edge characters for mid-way through tower on bottom
+;       12 - 15: front, middle, middle, back edge characters for top and bottom edges of tower on bottom
+
+;       16    : horizontal gap between towers
+;       17    : vertical gap between towers
+;       18    : border and paper colour
+
+;       19-20: number of moves before switching to next level (lo,hi)
+
+;       21   : physics countdown timer initial value
+;       22   : delay default value
+;		23   : flags
+;		24	 ; background map number
 
 space	equ 32
 
-towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space ,solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable ,8,8,0, 150,1, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
-towerChars2				dc.b	space,space,space,space, space,starRightPrintable,starLeftPrintable,space, 1,21,8, 0,3 ,2, 24, 0  ; black border, black paper
-towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 50,1, 1, 48, 1; stars
-maxLevel				equ 	3
+startOfLevelDefinitions
+towerChars0				
+towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	8,8,0
+						dc.b	150,1 
+						dc.b	1,48, 1, 0
+						
+towerChars2				dc.b	space,space,space,space
+						dc.b	space,space,starRightPrintable,starLeftPrintable
+						dc.b	space,space,space,space
+						dc.b	starRightPrintable,starLeftPrintable,space,space
+						dc.b	1,14,8 ; black border, black paper
+						dc.b	150,1
+						dc.b	2, 24, 0, 1
+						
+towerChars3				dc.b	space,space,space,space
+						dc.b	space,space,space,space
+						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	space,solidRightPrintable,solidLeftPrintable,space
+						dc.b	8,8,0
+						dc.b	250,1 
+						dc.b	1,36, 1, 0
+						
+maxLevel				equ 	4
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 setupTowerCharacters	subroutine				
-				lda #<towerChars1
+				lda #<startOfLevelDefinitions
 				sta cursor
-				lda #>towerChars1
+				lda #>startOfLevelDefinitions
 				sta cursor + 1
-				lda #16 ; number of positions to skip over to get next set of characters
+				lda #25 ; number of positions to skip over to get next set of characters
 .xloop
 				cpx #0 ; use this character set?
 				beq .useThis
@@ -1399,7 +1437,7 @@ setupTowerCharacters	subroutine
 				lda (cursor),y
 				sta (colorcursor),y
 				iny
-				cpy #8
+				cpy #16
 				bne .yloop
 .done
 				lda (cursor),y
@@ -1425,6 +1463,10 @@ setupTowerCharacters	subroutine
 				iny
 				lda (cursor),y
 				sta flags
+				iny
+				lda (cursor),y
+				tax
+				jsr prepareColors
 				rts
 
 resetScroll		subroutine
