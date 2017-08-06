@@ -2,6 +2,7 @@
 				org $1300 ; 1400 originally. should be free
 				
 start   		subroutine
+				jsr onceOnlyInit
 				jsr init
 restart
 				jsr startScreen
@@ -31,20 +32,21 @@ gravity				equ		3
 keypress			equ		197 ; zero page location
 keyspace			equ		32
 nokey				equ		64
+charDefinitionPointer	equ 36869								
 
 ; zero page variables
-cursor 			equ		251 ; also 252
-shipMinorY		equ 	253
 shipy			equ		254
+shipMinorY		equ 	253
+cursor 			equ		251 ; also 252
 colorcursor		equ		243
-shipx			equ		171
-scoreLo			equ		176
-scoreHi			equ 	177
-fuel			equ 	178
-fuelIncreaseLeft equ 	179
-scrollCounter	equ		204
-jetSound		equ		205
 shipdy			equ		207
+jetSound		equ		205
+scrollCounter	equ		204
+fuelIncreaseLeft equ 	179
+fuel			equ 	178
+scoreHi			equ 	177
+scoreLo			equ		176
+shipx			equ		171
 shipDirection	equ		170
 fuelSoundCount	equ     169
 diff			equ 	166 
@@ -74,9 +76,9 @@ collision subroutine
 				; if end of game, return with zero flag not set
 				; what have we collided with?
 
-				cmp #fuelLeft
+				cmp #fuelLeftPrintable
 				beq .collectFuelLeft
-				cmp #fuelRight
+				cmp #fuelRightPrintable
 				beq .collectFuelRight
 				rts ; zero flag not set, indicates fatal
 				
@@ -115,16 +117,16 @@ scrolled subroutine
 .smoothScrollLoop			
 				jsr drawship
 				lda charReplaced
-				cmp #32
+				cmp #space
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
 				bne endGame
 .doneCollision1
 				lda charReplaced2
-				cmp #32
+				cmp #space
 				beq .doneCollision2
 				; move cursor up one line so collected object is cleared
-				lda #22
+				lda #22 ; screen width
 				jsr subcursor
 				lda charReplaced2
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
@@ -132,9 +134,10 @@ scrolled subroutine
 .doneCollision2
 				jsr control					
 				jsr delay
-				jsr clearship
-				jsr physics
 				jsr updateSound
+				jsr rasterdelay
+				jsr clearship
+				jsr physics				
 				jsr smoothScroll
 				dec scrollCounter				
 				bne .smoothScrollLoop
@@ -146,37 +149,45 @@ scrollNow		subroutine
 				jmp scrolled
 
 smoothScroll	subroutine
-				lda scrollCounter
-				cmp #1
-				beq .resetScroll
-				ldx #8
+				
+				; first scroll the double character scollables
+				ldx #8 * numberOfScrollableCharacters
 .loop
 				dex
 				clc
-				rol towerRightEdge,x
-				rol towerLeftEdge,x
-				
-				clc
-				rol fuelRightEdge,x
-				rol fuelLeftEdge,x
-				
-				lda bottomBlockPosition,x
-				asl
-				bcc .doneRotate
-				ora #1	; set bottom bit if it fell off the top
-.doneRotate	
-				sta bottomBlockPosition,x
-
+				rol rightEdges,x
+				rol leftEdges,x
 				cpx #0 
 				bne .loop
+				
+				; next scroll the single character scrollables
+				ldx #8 * numberOfSingleScrollableChars
+.singleLoop
+				dex
+				lda singleScrollable,x
+				asl
+				bcc .noWrapAround
+				ora #1	; set bottom bit if it fell off the top
+.noWrapAround	
+				sta singleScrollable,x
+				cpx #0
+				bne .singleLoop
+
 .finished		
+				lda scrollCounter
+				cmp #1
+				beq .resetScroll
+
 				rts
 .resetScroll
-				ldx #5 * 8	; 5 characters to reset
+				ldx #8 * numberOfScrollableCharacters ; 8 bytes per character
 .loop2
 				dex
-				lda towerLeftOriginal,x
-				sta	towerLeftEdge,x
+				; copy back from left to right and clear the left
+				lda leftEdges,x
+				sta	rightEdges,x
+				lda #0
+				sta leftEdges,x
 				cpx #0
 				bne	.loop2
 				rts
@@ -291,10 +302,22 @@ increaseLevel	subroutine
 				stx levelNumber
 				jsr setUpLevel
 				rts
-				
-init			subroutine
+
+onceOnlyInit	subroutine
 				sei ; don't need maskable interrupts
 				
+				lda #$7f
+			  	;sta $912e     ; disable interrupts
+  				;sta $912d
+  				
+  				sta $911e     ; disable non maskable interrupts
+				lda #8
+				sta scrollCounter
+				rts
+				
+init			subroutine
+				jsr resetScroll;
+								
 				; make sure the screen memory is in the right place
 				lda #22 ; 22 for expanded VIC, 150 for unexpanded
 				sta 36866
@@ -335,13 +358,16 @@ init			subroutine
 				lda #128 ; start with half full fuel
 				sta fuel
 				
+				lda #8
+				sta scrollCounter
+				
 				lda #4
 				sta fuelColumn
 				
 				lda #16 ; give some space at the start of the level
 				sta towercolumnsleft
 				
-				lda #fuelLeft
+				lda #fuelLeftPrintable
 				sta fuelChar
 								
 				; Set up current level
@@ -493,7 +519,7 @@ prepareColors	subroutine
 createBottomOfScreen	subroutine
 				ldx #22
 				ldy #22
-				lda #bottomscreencharacter
+				lda #bottomBlockPrintable
 				sta character
 				jsr drawchar ; draw the first one
 				ldy #22 ; number left to go
@@ -724,12 +750,12 @@ drawtower
 				
 				; do we need to print the second edge?
 				lda fuelChar
-				cmp #fuelLeft
+				cmp #fuelLeftPrintable
 				beq .switchToRight
 								
 				; switch to printing the left edge again and choose the position for
 				; the next fuel character
-				lda #fuelLeft
+				lda #fuelLeftPrintable
 				sta fuelChar
 				lda #6
 ;;				jsr random ; need to choose 1 to 6
@@ -751,7 +777,7 @@ drawtower
 				dey
 				jmp .3
 .switchToRight
-				lda #fuelRight
+				lda #fuelRightPrintable
 				sta fuelChar
 				dec fuelColumn ; set to print the right hand edge next column
 				jmp .305
@@ -884,11 +910,13 @@ delay			ldx delayAmount
 				dex
 				stx delaycount
 				bne .1
+				rts
 				
 				; wait for raster to enter border
+rasterdelay
 .rasterloop
 				lda rasterline
-				cmp #124 ; 180
+				cmp #121 ; 124
 				bmi .rasterloop
 		;		lda #240
 		;		sta borderPaper
@@ -907,13 +935,14 @@ drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor
 				cpx #directionUp
 				beq .goingUp
 				adc #shipTopPrintable
-				; lda #shipTopPrintable + 1    ;#1		; ship picture
 				sta character
 				jmp drawshipchar
 .goingUp
 				sta character
 				lda #7
+				sec
 				sbc character
+				clc
 				adc #shipTopPrintable
 				sta character
 				
@@ -967,8 +996,7 @@ control			subroutine
 				lda #directionUp
 				sta shipDirection	
 				jsr swapMinorY
-.notpress
-				
+.notpress		
 				rts
 			
 physics			subroutine
@@ -1038,102 +1066,6 @@ swapMinorY
 				rts		
 							
 ;;;; Graphics routines
-startOfChars	equ	7168
-towerLeftEdge	equ startOfChars + 16
-towerRightEdge	equ startOfChars + 24
-bottomBlockPosition	equ startOfChars + 32
-fuelLeftEdge	equ startOfChars + 5 * 8
-fuelRightEdge	equ startOfChars + 6 * 8
-shipTop			equ startOfChars + 7 * 8  ; 8 character positions
-shipBottom		equ startOfChars + 15 * 8 ; 8 character positions 
-
-shipBottomPrintable	equ	15
-shipTopPrintable	equ 7
-
-filledChar		equ 0
-
-fuelLeft		equ 5
-fuelRight		equ 6
-
-charDefinitionPointer	equ 36869
-
-chars			dc.b	255,255,255,255,255,255,255,255
-charShip		dc.b	128+64,128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64
-charEmpty		dc.b	0,0,0,0,0,0,0,0
-charBlock		dc.b	255,255,255,255,255,255,255,255
-bottomBlock		dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
-fuel1			dc.b	0,0,0,0,0,0,0,0
-fuel2			dc.b	0,0,255,255,255,255,0,0
-
-towerLeftOriginal	equ chars + 16
-towerRightOriginal	equ chars + 24
-				
-numBytes		equ		56 ; 7 * 8
-
-; don't need to be in zero page as only used once
-copyNumber		dc		0
-topCopyPosition	dc		0
-bottomCopyPosition	dc 	0
-
-prepareShipCharacters	subroutine
-				; Need to make 8 copies of the top and bottom characters for the
-				; ship, with the ship shifted one pixel down each time
-				
-				; First, zero all the characters
-				ldy #16 * 8 - 1
-				lda #0
-.clearLoop
-				sta shipTop,y
-				sta shipBottom,y
-				cpy #0
-				beq	.doneClear
-				dey
-				jmp .clearLoop
-.doneClear
-				ldx #8 ; ship copy number 8 to 1
-				stx copyNumber
-				lda #0
-				sta topCopyPosition
-				sta bottomCopyPosition
-.copyNextPair
-				ldy #0 ; position within copy 0 to 7
-.shipCopyLoop
-				; first copy top part
-				cpy copyNumber	
-				beq .copiedTopPart
-				
-				lda charShip,y
-				ldx topCopyPosition
-				sta shipTop,x
-				inc topCopyPosition
-				inc bottomCopyPosition
-				iny
-				jmp .shipCopyLoop
-.copiedTopPart
-			
-.shipCopyBottomLoop
-				; then copy button part
-				cpy #8
-				beq .copiedBottomPart
-				
-				lda charShip,y
-				ldx bottomCopyPosition
-				sta shipBottom - 8,x
-				inc bottomCopyPosition
-				inc topCopyPosition
-				iny
-				jmp .shipCopyBottomLoop
-.copiedBottomPart
-				inc bottomCopyPosition
-				inc topCopyPosition
-				ldx copyNumber
-				cpx #0
-				beq .finished
-				dec copyNumber
-				jmp .copyNextPair
-.finished
-				rts
-				
 copyROMCharacters	subroutine
 				;;; First copy original character definitions in
 				lda #<32768 ; start of ROM character set
@@ -1160,34 +1092,9 @@ copyROMCharacters	subroutine
 				cpx #0 
 				bne .copyLoop
 				rts
-				
-				
+								
 defineCharacters	subroutine
-				jsr copyROMCharacters
-				jsr prepareShipCharacters
-				
-				;;; Prepare character definitions
-				lda #<chars
-				sta.z cursor
-				lda #>chars
-				sta.z cursor + 1
-				
-				lda #<startOfChars
-				sta.z	colorcursor
-				lda #>startOfChars
-				sta.z colorcursor + 1
-				
-				ldy #numBytes
-
-.copyLoop		dey
-				lda (cursor),y
-				sta	(colorcursor),y
-				cpy #0
-				bne .copyLoop
-						
-				;;; Switch character definitions to RAM
-			;	lda #$ff
-			;	sta $9005
+			;	jsr copyROMCharacters
 				rts
 				
 soundVolume		equ		36878
@@ -1395,8 +1302,10 @@ waitForStartKey subroutine
 ;       14   : delay default value
 ;		15   : flags
 
-towerChars1				dc.b	32,3,2,32 ,3,0,0,2 ,8,8,0, 50,2, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
-towerChars2				dc.b	32,32,32,32, 32,3,2,32, 1,21,8, 0,3 ,2, 24, 0  ; black border, black paper
+space	equ 32
+
+towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space ,solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable ,8,8,0, 50,2, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
+towerChars2				dc.b	space,space,space,space, space,starRightPrintable,starLeftPrintable,space, 1,21,8, 0,3 ,2, 24, 0  ; black border, black paper
 towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2, 1, 48, 1; stars
 maxLevel				equ 	3
 
@@ -1450,4 +1359,106 @@ setupTowerCharacters	subroutine
 				lda (cursor),y
 				sta flags
 				rts
+
+resetScroll		subroutine
+				; reset smooth scrolling back to the start
+				lda scrollCounter
+.scrollLoop
+				beq .scrollDone
+				jsr smoothScroll
+				dec scrollCounter
+				jmp .scrollLoop
+.scrollDone
+				lda #8
+				sta scrollCounter
+				rts
 				
+programEnd
+				dc.b 0
+				
+; now for the graphics
+				org 7168
+				
+startOfChars
+scrollable		
+				; first the scrollable characters. All the left hand edges, then right hand
+				; striped block, scrollable
+leftEdges
+
+solidLeftChar	dc.b	0,0,0,0,0,0,0,0
+towerLeftChar	dc.b	0,0,0,0,0,0,0,0
+fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
+starLeftChar	dc.b	0,0,0,0,0,0,0,0
+
+rightEdges
+
+solidRightChar	dc.b	255,255,0,255,255,0,255,255
+towerRightChar	dc.b	145,137,197,163,145,137,197,163
+fuelRightChar	dc.b	0,0,255,255,255,255,0,0
+starRightChar	dc.b	16,16,56,254,56,16,16,16
+
+numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
+
+fuelLeftPrintable equ (fuelLeftChar - startOfChars) / 8
+fuelRightPrintable equ (fuelRightChar - startOfChars) / 8
+towerLeftPrintable equ (towerLeftChar - startOfChars) / 8
+towerRightPrintable equ (towerRightChar - startOfChars) / 8
+solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
+solidRightPrintable equ (solidRightChar - startOfChars) / 8
+starLeftPrintable equ (starLeftChar - startOfChars) / 8
+starRightPrintable equ (starRightChar - startOfChars) / 8
+
+nonscrollable				
+				; now the non scrollble characters
+				; striped block, not scrollable
+solidChar		dc.b	255,255,0,255,255,0,255,255				
+solidPrintable equ (solidChar - startOfChars) / 8			
+
+singleScrollable
+numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
+
+				; now the single character rotational scrolling blocks
+				; wavy block at bottom of screen
+bottomBlockChar	dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
+bottomBlockPrintable equ (bottomBlockChar - startOfChars) / 8
+
+endOfScenery
+
+				; now for the pre-computed space ship characters, first the top half, then the bottom half
+shipBottomPrintable	equ	(shipBottom - startOfChars / 8)
+shipTopPrintable	equ (shipTop - startOfChars) / 8
+				
+shipTop
+				dc.b	128+64,128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64
+				dc.b	0, 128+64,128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16
+				dc.b	0, 0, 128+64,128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4
+				dc.b	0, 0, 0, 128+64,128+64+32+16,128+64+32+16+8+4,255, 255
+				
+				dc.b	0, 0, 0, 0, 128+64,128+64+32+16,128+64+32+16+8+4,255
+				dc.b	0, 0, 0, 0, 0, 128+64,128+64+32+16,128+64+32+16+8+4
+				dc.b	0, 0, 0, 0, 0, 0, 128+64,128+64+32+16
+				dc.b	0, 0, 0, 0, 0, 0, 0, 128+64
+shipBottom
+				dc.b	0, 0, 0, 0, 0, 0, 0, 0
+				dc.b	128+64, 0, 0, 0, 0, 0, 0, 0
+				dc.b	128+64+32+16, 128+64, 0, 0, 0, 0, 0, 0
+				dc.b	128+64+32+16+8+4, 128+64+32+16, 128+64, 0, 0, 0, 0, 0
+				
+				dc.b	255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0, 0, 0, 0
+				dc.b	255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0, 0, 0
+				dc.b	128+64+32+16+8+4, 255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0, 0
+				dc.b	128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0
+enfOfChars
+				dc.b	1,2,4,8,16,32,64,128
+dataEnd
+				dc.b	0
+
+IFNCONST	printedStatus
+				printedStatus equ 1
+				echo "To run: SYS ", start
+				echo "Total length ", dataEnd - start
+				echo "Space left ", 7168 - programEnd
+ENDIF
+
+
+					
