@@ -7,11 +7,13 @@ start   		subroutine
 restart
 				jsr startScreen
 				jsr init
+				jsr thrust ; give the ship a short thrust to start off
 				jmp scrollNow
 				
 welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
-startMessage	dc.b	147,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
-				dc.b	17,17,17,17, 159, 18, " PRESS SPACE TO START ",0
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
+				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
+continueMessage	dc.b	17, 29, 29,  29, 18,             " C  TO CONTINUE ",0
 
 welcometerminator 	dc 0
 
@@ -44,8 +46,8 @@ jetSound		equ		205
 scrollCounter	equ		204
 fuelIncreaseLeft equ 	179
 fuel			equ 	178
-scoreHi			equ 	177
-scoreLo			equ		176
+;scoreHi			equ 	177
+;scoreLo			equ		176
 shipx			equ		171
 shipDirection	equ		170
 fuelSoundCount	equ     169
@@ -95,6 +97,7 @@ collision subroutine
 				jsr storechar				
 				jmp .increaseFuel		
 .increaseFuel
+				jsr increaseScoreBy100
 				lda #128
 				sta fuelSoundCount
 				lda #fuelIncreaseAmount
@@ -252,24 +255,6 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 					
 ; Increase score by one and update the onscreen counter
 increaseScoreAndProgress	subroutine
-				inc scoreLo
-				bne .doneIncrease
-				inc scoreHi	
-.doneIncrease
-				; increase the digits on screen
-				lda #58  + 128; '9' + 1
-				ldx #20 ; position of score digits from the start of screen memory
-.increaseDigits
-				inc screenstart,x
-				cmp screenstart,x
-				bne .doneIncreaseDigits
-				lda #48 + 128 ; '0'
-				sta screenstart,x
-				lda #58  + 128; '9' + 1
-				dex
-				cpx #20 - 5 ; reached the last digit?
-				bne .increaseDigits				
-.doneIncreaseDigits			
 				; now decrease progress counter. If reached zero, move to next level before returning
 				ldx progressCounterLo
 				dex
@@ -289,9 +274,37 @@ increaseScoreAndProgress	subroutine
 				bne .doneProgress
 				jsr increaseLevel				
 .doneProgress
+increaseScore
+				; now increase score
+				
+				; increase the digits on screen
+				lda #58  + 128; '9' + 1
+				ldx #20 ; position of score digits from the start of screen memory
+increaseDigits
+				inc screenstart,x
+				cmp screenstart,x
+				bne .doneIncreaseDigits
+				lda #48 + 128 ; '0'
+				sta screenstart,x
+				lda #58  + 128; '9' + 1
+				dex
+				cpx #20 - 5 ; reached the last digit?
+				bne increaseDigits				
+.doneIncreaseDigits			
 				rts
 			
+increaseScoreBy10
+				lda #58 + 128
+				ldx #19
+				jmp increaseDigits
+
+increaseScoreBy100
+				lda #58 + 128
+				ldx #18
+				jmp increaseDigits
+				
 increaseLevel	subroutine
+				jsr powerUp
 				ldx levelNumber
 				inx
 				cpx #maxLevel
@@ -313,11 +326,7 @@ onceOnlyInit	subroutine
   				sta $911e     ; disable non maskable interrupts
 				lda #8
 				sta scrollCounter
-				rts
 				
-init			subroutine
-				jsr resetScroll;
-								
 				; make sure the screen memory is in the right place
 				lda #22 ; 22 for expanded VIC, 150 for unexpanded
 				sta 36866
@@ -328,15 +337,23 @@ init			subroutine
 				lda #$10 ; default screen page. dec 30 for unexpanded vic
 				sta screenMemoryPage ; tell the kernel where the screen is. Must match the above.
 				
+				lda #80
+				sta $291	; disable case change
+				
+				jsr defineCharacters ;prepare UDGs
+				
+				lda #0
+				sta levelNumber
+				rts
+
+init			subroutine
+				jsr resetScroll;
 				jsr setUpSound
 				
 				lda #6		; set ship start position
 				sta shipx
 				lda #10
 				sta shipy
-				
-				lda #80
-				sta $291	; disable case change
 								
 				; clear screen and display score
 				lda #<welcome
@@ -345,15 +362,11 @@ init			subroutine
 				sta.z cursor + 1
 				jsr printline
 				
-				jsr defineCharacters ;prepare UDGs
 				jsr createBottomOfScreen
 				
 				lda #0
 				sta shipdy
 				sta towerheight
-				sta scoreLo
-				sta scoreHi
-				sta levelNumber
 				
 				lda #128 ; start with half full fuel
 				sta fuel
@@ -989,6 +1002,7 @@ control			subroutine
 				bne .notpress
 				; space just pressed
 				; apply an impulse
+thrust			
 				lda #255
 				sta jetSound
 				lda #shipimpulse
@@ -1122,8 +1136,15 @@ stopSound
 				rts
 				
 updateSound subroutine
+				ldx #0
 				lda jetSound
-				sta voice3
+				cmp #230
+				bmi .makeSound ; don't set to make a sound, just use 0 (sound off)
+				and #3
+				beq .makeSound
+				ldx jetSound
+.makeSound
+				stx voice3
 				
 				lda fuelSoundCount
 				sta voice2
@@ -1132,12 +1153,36 @@ updateSound subroutine
 				lda fuelSoundCount
 				cmp #0
 				beq .donefuelsound
-				inc fuelSoundCount
-				inc fuelSoundCount
-				inc fuelSoundCount
-				inc fuelSoundCount
+				tax
+				inx
+				inx
+				inx
+				inx
+				stx fuelSoundCount
 .donefuelsound
+				lda effectCount
+				ldx #0
+				cmp #0
+				beq .doneEffect
+				; the effect is in progress
+				ldx #250
+				dec effectCount
+				and #3
+				beq .doneEffect
+				ldx #255
+				jsr increaseScoreBy10
+
+.doneEffect
+				stx	voice1
 				rts
+				
+powerUp			subroutine
+				lda #100
+				sta effectCount
+				rts
+				
+effectCount		dc.b 0
+
 
 ; don't need to be in zero page as only used during explosion, which isn't time critical
 explodeCountLo		dc 0
@@ -1288,14 +1333,29 @@ startScreen     subroutine
 				lda #>startMessage
 				sta.z cursor + 1
 				jsr printline
+				
+				; if we are beyond the first level, print the continue message
+				lda levelNumber
+				beq .notContinue
+				lda #<continueMessage
+				sta.z cursor;
+				lda #>continueMessage
+				sta.z cursor + 1
+				jsr printline
+.notContinue
 				jsr waitForStartKey
 				rts
-				
+								
 waitForStartKey subroutine
 				jsr random
 				lda keypress
+				cmp #34 ; c for continue
+				beq .done
 				cmp #32 ; space
 				bne waitForStartKey
+				lda #0
+				sta levelNumber ; reset level to start
+.done
 				rts
 
 ; level format:
@@ -1311,9 +1371,9 @@ waitForStartKey subroutine
 
 space	equ 32
 
-towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space ,solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable ,8,8,0, 50,2, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
+towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space ,solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable ,8,8,0, 150,1, 1,48, 1; front edge, middle block, middle block, back edge, then tower top chars
 towerChars2				dc.b	space,space,space,space, space,starRightPrintable,starLeftPrintable,space, 1,21,8, 0,3 ,2, 24, 0  ; black border, black paper
-towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 0,2, 1, 48, 1; stars
+towerChars3				dc.b	3,2,32,32 ,32,32,32,32 ,8,8,0, 50,1, 1, 48, 1; stars
 maxLevel				equ 	3
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
