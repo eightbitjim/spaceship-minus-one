@@ -1161,9 +1161,15 @@ explode subroutine
 				sta explosionSize	
 				
 				lda shipy ; if ship is at bottom of screen, move up a bit so the explosion is visible
-				cpy #21
-				bmi .explodeLoop
+				cmp #21
+				bmi .notShiftShipUp
 				lda #21
+				sta shipy
+.notShiftShipUp
+				cmp #1
+				bpl .explodeLoop
+				
+				lda #1 ; shift ship down a bit
 				sta shipy
 .explodeLoop
 				; explode count
@@ -1211,10 +1217,11 @@ explode subroutine
 				lda shipy
 				sec
 				sbc explosionSize
+				cmp #1
 				bmi .offTopEdge
 				jmp .doneTopEdge
 .offTopEdge
-				lda #0
+				lda #1
 .doneTopEdge
 				sta explosionTopEdge								
 					
@@ -1453,12 +1460,9 @@ enfOfChars
 dataEnd
 				dc.b	0
 
-IFNCONST	printedStatus
-				printedStatus equ 1
 				echo "To run: SYS ", start
 				echo "Total length ", dataEnd - start
 				echo "Space left ", 7168 - programEnd
-ENDIF
 
 
 					
