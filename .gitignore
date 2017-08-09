@@ -1,4 +1,5 @@
 *.prg
 *.o
 a.out
+list.txt
 

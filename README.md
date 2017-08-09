@@ -7,7 +7,7 @@ If you want to have a go, you should assemble using the [dasm assembler](https:/
 
 Then load `game.prg` into a VIC20 emulator such as Vice. Then run using:
 
-`SYS 4864`
+`SYS 4736`
 
 The only control is pressing space!
 
