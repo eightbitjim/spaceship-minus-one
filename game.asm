@@ -70,6 +70,9 @@ topTowerMiddleCharacter	equ	137
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
 flags			dc 0 ; bit 0: decrease fuel if set
+delayReduction	dc 0	; amount to reduce delay by. Increased by level wrap-around
+minDelayAmount	equ	5
+delayReductionPerWraparound	equ 10 ; amount to reduce delay by each time all levels are completed
 fuelActiveFlag	equ #1
 
 .outOfFuel
@@ -312,7 +315,11 @@ increaseLevel	subroutine
 				cpx #maxLevel
 				bne .doneIncrease
 				ldx #0 ; back to first level, but increase speed
-				; Increase speed (TODO)
+				; Increase speed
+				lda delayReduction
+				clc
+				adc #delayReductionPerWraparound
+				sta delayReduction
 .doneIncrease
 				stx levelNumber
 				jsr setUpLevel
@@ -389,9 +396,7 @@ init			subroutine
 setUpLevel
 				ldx levelNumber
 				jsr setupTowerCharacters ; also sets up constants
-				;ldx levelNumber	
-				;jsr prepareColors ; prepare color map		
-				
+					
 				lda physicsCountdownInitialValue
 				sta physicsCountdown	
 				rts
@@ -445,7 +450,7 @@ backgroundMap
 
 				dc 253 ; end
 ; map 2
-
+				dc 253 
 
 ; sets up background colours
 ; start by loading x with the index of the colour map, starting at zero
@@ -1364,6 +1369,8 @@ waitForStartKey subroutine
 				bne waitForStartKey
 				lda #0
 				sta levelNumber ; reset level to start
+				lda #10
+				sta delayReduction
 .done
 				rts
 
@@ -1408,11 +1415,11 @@ towerChars3				dc.b	space,space,space,space
 						dc.b	space,space,space,space
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	space,solidRightPrintable,solidLeftPrintable,space
-						dc.b	8,8,0
-						dc.b	250,1 
+						dc.b	1,21,0
+						dc.b	150,1 
 						dc.b	1,36, 1, 0
 						
-maxLevel				equ 	4
+maxLevel				equ 	3
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 setupTowerCharacters	subroutine				
@@ -1420,8 +1427,8 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>startOfLevelDefinitions
 				sta cursor + 1
-				lda #25 ; number of positions to skip over to get next set of characters
 .xloop
+				lda #25 ; number of positions to skip over to get next set of characters
 				cpx #0 ; use this character set?
 				beq .useThis
 				jsr addcursor
@@ -1459,6 +1466,12 @@ setupTowerCharacters	subroutine
 				sta physicsCountdownInitialValue
 				
 				jsr .getNext
+				sec
+				sbc delayReduction
+				cmp #minDelayAmount
+				bpl .delayCorrect
+				lda #minDelayAmount
+.delayCorrect
 				sta delayAmount
 				
 				jsr .getNext
@@ -1507,7 +1520,7 @@ rightEdges
 
 solidRightChar	dc.b	255,255,0,255,255,0,255,255
 towerRightChar	dc.b	145,137,197,163,145,137,197,163
-fuelRightChar	dc.b	0,0,255,255,255,255,0,0
+fuelRightChar	dc.b	126,66,223,199,223,223,94,126
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
