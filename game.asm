@@ -1394,7 +1394,22 @@ waitForStartKey subroutine
 space	equ 32
 
 startOfLevelDefinitions
-towerChars0				
+spaceLevel				dc.b	space,space,space,space
+						dc.b	space,space,starRightPrintable,starLeftPrintable
+						dc.b	space,space,space,space
+						dc.b	starRightPrintable,starLeftPrintable,space,space
+						dc.b	1,14,8 ; black border, black paper
+						dc.b	150,1
+						dc.b	2, 24, 0, 1
+
+towerChars0				dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	8,8,0
+						dc.b	150,1 
+						dc.b	1,48, 1, 0
+											
 towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
@@ -1403,30 +1418,44 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	150,1 
 						dc.b	1,48, 1, 0
 						
-towerChars2				dc.b	space,space,space,space
-						dc.b	space,space,starRightPrintable,starLeftPrintable
-						dc.b	space,space,space,space
-						dc.b	starRightPrintable,starLeftPrintable,space,space
-						dc.b	1,14,8 ; black border, black paper
-						dc.b	150,1
-						dc.b	2, 24, 0, 1
-						
-towerChars3				dc.b	space,space,space,space
-						dc.b	space,space,space,space
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
-						dc.b	space,solidRightPrintable,solidLeftPrintable,space
-						dc.b	1,21,0
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	8,8,0
 						dc.b	150,1 
-						dc.b	1,36, 1, 0
+						dc.b	1,48, 1, 0
 						
-maxLevel				equ 	3
+						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	8,8,0
+						dc.b	150,1 
+						dc.b	1,48, 1, 0
+						
+maxLevel				equ 	7
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
+;;;; Every odd numbered level will be level 1. Otherwise, it's the level number divided by 2
 setupTowerCharacters	subroutine				
 				lda #<startOfLevelDefinitions
 				sta cursor
 				lda #>startOfLevelDefinitions
 				sta cursor + 1
+				
+				; need to set the level number correctly
+				txa
+				and #1 ; odd numbered level?
+				cmp #0
+				beq .evenLevel
+				ldx #0 ; use the space level (0)
+				jmp .xloop
+.evenLevel
+				txa
+				lsr.a; divide by 2
+				tax
+				inx
 .xloop
 				lda #25 ; number of positions to skip over to get next set of characters
 				cpx #0 ; use this character set?
