@@ -11,7 +11,7 @@ restart
 				jmp scrollNow
 				
 welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
-startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, " VICCY SPACESHIP! ", 13
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, "  STARSHIP '83  ", 13
 				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
 continueMessage	dc.b	17, 29, 29,  29, 18,             " C  TO CONTINUE ",0
 
@@ -34,6 +34,7 @@ gravity				equ		3
 keypress			equ		197 ; zero page location
 keyspace			equ		32
 nokey				equ		64
+spacePrintable		equ 	32
 charDefinitionPointer	equ 36869								
 
 ; zero page variables
@@ -90,13 +91,13 @@ collision subroutine
 				rts ; zero flag not set, indicates fatal
 				
 .collectFuelLeft
-				lda #32
+				lda #spacePrintable
 				sta character
 				inc.z cursor
 				jsr storechar
 				jmp .increaseFuel		
 .collectFuelRight
-				lda #32
+				lda #spacePrintable
 				sta character
 				dec.z cursor
 				jsr storechar				
@@ -125,13 +126,13 @@ scrolled subroutine
 .smoothScrollLoop			
 				jsr drawship
 				lda charReplaced
-				cmp #space
+				cmp #spacePrintable
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
 				bne endGame
 .doneCollision1
 				lda charReplaced2
-				cmp #space
+				cmp #spacePrintable
 				beq .doneCollision2
 				; move cursor up one line so collected object is cleared
 				lda #22 ; screen width
@@ -415,43 +416,6 @@ color0				dc 		0 ; written for a 0 bit in the background map
 color1				dc 		0 ; written for a 1 bit in the background map
 bgOrfg				dc 		0 ; bg = 0; fg = 1
 
-; background map format is:
-; starts in backbround mode (i.e. space)
-; [instruction][instruction][instruction], etc
-;
-; where:
-;	instruction = 253: continue to end of screen
-; 	instruction	< 253: number of characters in run before inverting (i.e. background to foreground)
-;	instruction = 254, x: change background color to following byte
-;	instruction = 255, x: change foreground color to following byte
-
-backgroundMap	
-; map 0
-				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 3, 255, 1 ; change colours to clouds
-				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
-				dc 	255, 6 ; change colour to buildings
-				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
-				dc 	255, 5 ; change colour to grass
-				dc	110
-				dc 253 ; end
-; map 1
-				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 1, 255, 2, 22, 22,
-				dc	254, 7, 255, 1, 22, 22,
-				dc	254, 4, 255, 7, 22, 22,
-				dc	254, 2, 255, 1, 22, 22,
-				dc	254, 7, 255, 4, 22, 22,
-				dc	254, 1, 255, 1, 22, 22,
-				dc	254, 4, 255, 2, 22, 22,
-				dc	254, 1, 255, 4, 22, 22,
-				dc	254, 7, 255, 1, 22, 22,
-				dc	254, 2, 255, 7, 22, 22,
-
-				dc 253 ; end
-; map 2
-				dc 253 
-
 ; sets up background colours
 ; start by loading x with the index of the colour map, starting at zero
 
@@ -666,7 +630,7 @@ drawtowerScope  subroutine
 .shortTower
 				cpy #0
 				bne .not0
-				lda #spacecharacter
+				lda #spacePrintable
 				sta towerMiddleCharacter	
 				jmp .draw
 .not0
@@ -722,7 +686,7 @@ drawtower
 				dey
 				jmp .1										
 .drawnBottom	; now draw the gap
-				lda #spacecharacter
+				lda #spacePrintable
 				sta character
 				ldy gapWidth
 				lda towerheight		; if tower height is zero, don't draw the top
@@ -765,7 +729,7 @@ drawtower
 				lda	character	; char to print
 				sta (cursor),x
 .storecharcomplete3
-				lda #spacecharacter ; back to printing spaces
+				lda #spacePrintable ; back to printing spaces
 				sta character
 				
 				; do we need to print the second edge?
@@ -838,11 +802,10 @@ defaulttowerwidth		equ		4
 
 ; TODO, move to zero page to make quicker
 towercharacters			dc.b	3,0,0,2;
-towerTopCharacters 		dc.b	0, 32, 0, 32; to be filled in with real tower characters. Must immediately follow towercharacters
+towerTopCharacters 		dc.b	0, spacePrintable, 0, spacePrintable; to be filled in with real tower characters. Must immediately follow towercharacters
 topTowerCharacters		dc.b	0,0,0,0;
 topTowerEdgeCharacters	dc.b	0,0,0,0;
 
-spacecharacter			equ		32		
 bottomscreencharacter	equ		4
 fuelcharacter			equ 	6
 
@@ -979,7 +942,7 @@ drawshipchar	ldx shipx
 				lda charReplaced
 				sta charReplaced2 ; store this for collision detection later
 				lda character
-				cmp #32
+				cmp #spacePrintable
 				beq .keepSpace
 				clc
 				adc #8 ; bottom set are 8 bytes further on
@@ -990,7 +953,7 @@ drawshipchar	ldx shipx
 				jsr storeCharSaveReplaced
 				rts
 				
-clearship		lda #32		; space
+clearship		lda #spacePrintable
 				sta character
 				jmp drawshipchar
 				
@@ -1285,7 +1248,7 @@ explode subroutine
 				sta explosionTopEdge								
 					
 				; now draw the explosion box
-				lda #32
+				lda #explodePrintable
 				sta character
 
 				lda explosionTopEdge
@@ -1365,7 +1328,7 @@ waitForStartKey subroutine
 				lda keypress
 				cmp #34 ; c for continue
 				beq .done
-				cmp #32 ; space
+				cmp #32 ; space key
 				bne waitForStartKey
 				lda #0
 				sta levelNumber ; reset level to start
@@ -1391,7 +1354,11 @@ waitForStartKey subroutine
 ;		23   : flags
 ;		24	 ; background map number
 
-space	equ 32
+space	equ spacePrintable
+
+; specify the order of levels. 255 instructs to wrap around
+finishedLevels	equ	255
+levelOrder	dc.b	1,2,0,3,0,4,0,0,5,6,finishedLevels
 
 startOfLevelDefinitions
 spaceLevel				dc.b	space,space,space,space
@@ -1402,11 +1369,11 @@ spaceLevel				dc.b	space,space,space,space
 						dc.b	150,1
 						dc.b	2, 24, 0, 1
 
-towerChars0				dc.b	space,towerRightPrintable,towerLeftPrintable,space
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	8,8,0
+towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						dc.b	8,24,0
 						dc.b	150,1 
 						dc.b	1,48, 1, 0
 											
@@ -1422,7 +1389,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	8,8,0
+						dc.b	7,7,0
 						dc.b	150,1 
 						dc.b	1,48, 1, 0
 						
@@ -1430,7 +1397,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	8,8,0
+						dc.b	5,20,0
 						dc.b	150,1 
 						dc.b	1,48, 1, 0
 						
@@ -1443,19 +1410,20 @@ setupTowerCharacters	subroutine
 				sta cursor
 				lda #>startOfLevelDefinitions
 				sta cursor + 1
-				
-				; need to set the level number correctly
-				txa
-				and #1 ; odd numbered level?
-				cmp #0
-				beq .evenLevel
-				ldx #0 ; use the space level (0)
-				jmp .xloop
-.evenLevel
-				txa
-				lsr.a; divide by 2
+				ldy #0
+.levelFindLoop
+				lda levelOrder,y
+				cmp #finishedLevels
+				beq .endOfLevels
+.endOfLevelsReturn
+				cpx #0
+				beq .foundLevel
+				dex
+				iny
+				jmp .levelFindLoop
+.foundLevel			
 				tax
-				inx
+				; x now holds the number of the level description					
 .xloop
 				lda #25 ; number of positions to skip over to get next set of characters
 				cpx #0 ; use this character set?
@@ -1514,7 +1482,11 @@ setupTowerCharacters	subroutine
 .getNext		lda (cursor),y
 				iny
 				rts
-
+.endOfLevels
+				ldy #0 ; reset back to start
+				; increase speed (TODO)
+				jmp .endOfLevelsReturn
+				
 resetScroll		subroutine
 				; reset smooth scrolling back to the start
 				lda scrollCounter
@@ -1544,6 +1516,7 @@ solidLeftChar	dc.b	0,0,0,0,0,0,0,0
 towerLeftChar	dc.b	0,0,0,0,0,0,0,0
 fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
 starLeftChar	dc.b	0,0,0,0,0,0,0,0
+blackLeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
@@ -1551,6 +1524,7 @@ solidRightChar	dc.b	255,255,0,255,255,0,255,255
 towerRightChar	dc.b	145,137,197,163,145,137,197,163
 fuelRightChar	dc.b	126,66,223,199,223,223,94,126
 starRightChar	dc.b	16,16,56,254,56,16,16,16
+blackRightChar	dc.b	255,255,255,255,255,255,255,255
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
@@ -1562,13 +1536,19 @@ solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
 solidRightPrintable equ (solidRightChar - startOfChars) / 8
 starLeftPrintable equ (starLeftChar - startOfChars) / 8
 starRightPrintable equ (starRightChar - startOfChars) / 8
+blackLeftPrintable equ (blackLeftChar - startOfChars) / 8
+blackRightPrintable equ (blackRightChar - startOfChars) / 8
 
 nonscrollable				
 				; now the non scrollble characters
 				; striped block, not scrollable
 solidChar		dc.b	255,255,0,255,255,0,255,255				
-solidPrintable equ (solidChar - startOfChars) / 8			
-
+solidPrintable equ (solidChar - startOfChars) / 8	
+explodeChar		dc.b	85, 170, 85, 170, 85, 170, 85, 170
+explodePrintable equ (explodeChar - startOfChars) / 8	
+blackChar		dc.b	255,255,255,255,255,255,255,255
+blackPrintable equ (blackChar - startOfChars) / 8	
+	
 singleScrollable
 numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 
@@ -1605,6 +1585,55 @@ shipBottom
 				dc.b	128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0
 enfOfChars
 				dc.b	1,2,4,8,16,32,64,128
+				
+				org	startOfChars + 32 * 8
+				dc.b	0,0,0,0,0,0,0,0 ; define the space character
+				
+				org	startOfChars + 33 * 8
+				
+; background map format is:
+; starts in backbround mode (i.e. space)
+; [instruction][instruction][instruction], etc
+;
+; where:
+;	instruction = 253: continue to end of screen
+; 	instruction	< 253: number of characters in run before inverting (i.e. background to foreground)
+;	instruction = 254, x: change background color to following byte
+;	instruction = 255, x: change foreground color to following byte
+
+backgroundMap	
+; map 0
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 3, 255, 1 ; change colours to clouds
+				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
+				dc 	255, 6 ; change colour to buildings
+				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
+				dc 	255, 5 ; change colour to grass
+				dc	110
+				dc 253 ; end
+; map 1
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 1, 255, 2, 22, 22,
+				dc	254, 7, 255, 1, 22, 22,
+				dc	254, 4, 255, 7, 22, 22,
+				dc	254, 2, 255, 1, 22, 22,
+				dc	254, 7, 255, 4, 22, 22,
+				dc	254, 1, 255, 1, 22, 22,
+				dc	254, 4, 255, 2, 22, 22,
+				dc	254, 1, 255, 4, 22, 22,
+				dc	254, 7, 255, 1, 22, 22,
+				dc	254, 2, 255, 7, 22, 22,
+
+				dc 253 ; end
+; map 2
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 2, 255, 4 ; change colours to clouds
+				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
+				dc 	255, 5 ; change colour to buildings
+				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
+				dc 	255, 1 ; change colour to grass
+				dc	110
+				dc 253 ; end
 dataEnd
 				dc.b	0
 
