@@ -1,6 +1,7 @@
 				processor 6502
 				org $1280 ; 1400 originally. should be free
 				
+				; keyboard scan routine at eb1e, fills in $cb and f5. Scans $9120 and $9121. quite long
 start   		subroutine
 				jsr onceOnlyInit
 				jsr init
@@ -8,12 +9,13 @@ restart
 				jsr startScreen
 				jsr init
 				jsr thrust ; give the ship a short thrust to start off
+				jsr drawline
 				jmp scrollNow
 				
 welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
-startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, "  STARSHIP '83  ", 13
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
 				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
-continueMessage	dc.b	17, 29, 29,  29, 18,             " C  TO CONTINUE ",0
+continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 29, 29, 29, 18, "   BEGINNING    ",0
 
 welcometerminator 	dc 0
 
@@ -35,7 +37,9 @@ keypress			equ		197 ; zero page location
 keyspace			equ		32
 nokey				equ		64
 spacePrintable		equ 	32
-charDefinitionPointer	equ 36869								
+charDefinitionPointer	equ 36869	
+nextLineLength		equ		22 ; 22 positions in all
+							
 
 ; zero page variables
 shipy			equ		254
@@ -66,6 +70,16 @@ progressCounterLo	equ 140
 progressCounterHi	equ 139
 topTowerEdgeCharacter	equ 138
 topTowerMiddleCharacter	equ	137
+shipToBeDrawnAt1	equ 23 ; +1
+shipToBeDrawnAt2	equ 25 ; +1
+
+nextLine			equ 	0 ; put at start of zero page
+
+towercharacters		equ 27;	 4 bytes
+towerTopCharacters 	equ 31; 4 bytes
+topTowerCharacters	equ 35; 4 bytes 
+topTowerEdgeCharacters	equ 39; 4 bytes 
+framesSinceLastScroll	equ 43
 
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
@@ -78,29 +92,30 @@ fuelActiveFlag	equ #1
 
 .outOfFuel
 				jmp restart
-;				rts
 
 collision subroutine
 				; if end of game, return with zero flag not set
 				; what have we collided with?
-
 				cmp #fuelLeftPrintable
 				beq .collectFuelLeft
 				cmp #fuelRightPrintable
 				beq .collectFuelRight
 				rts ; zero flag not set, indicates fatal
-				
 .collectFuelLeft
 				lda #spacePrintable
-				sta character
-				inc.z cursor
-				jsr storechar
+				ldy #1
+				sta (shipToBeDrawnAt1),y
+				sta (shipToBeDrawnAt2),y
 				jmp .increaseFuel		
 .collectFuelRight
 				lda #spacePrintable
-				sta character
-				dec.z cursor
-				jsr storechar				
+				ldy #0
+				dec shipToBeDrawnAt1
+				dec shipToBeDrawnAt2
+				sta (shipToBeDrawnAt1),y
+				sta (shipToBeDrawnAt2),y
+				inc shipToBeDrawnAt1
+				inc shipToBeDrawnAt2
 				jmp .increaseFuel		
 .increaseFuel
 				jsr increaseScoreBy100
@@ -111,7 +126,7 @@ collision subroutine
 .finishedNotFatal
 				lda #0 ; set zero flag to indicate non-fatal
 				rts
-				
+			
 endGame		
 				; End of game
 				lda #7 ; yellow
@@ -123,8 +138,13 @@ endGame
 scrolled subroutine
 				lda #8
 				sta scrollCounter
+				lda #0
+				sta framesSinceLastScroll
+				jmp .dontdrawship
 .smoothScrollLoop			
+				jsr workOutShipPosition
 				jsr drawship
+.dontdrawship
 				lda charReplaced
 				cmp #spacePrintable
 				beq .doneCollision1
@@ -141,24 +161,36 @@ scrolled subroutine
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
 				bne endGame
 .doneCollision2
-				jsr control					
-				jsr delay
+				jsr control		
 				jsr updateSound
 				jsr rasterdelay
 				jsr clearship
-				jsr physics				
+				jsr physics		
+				ldx framesSinceLastScroll
+				inx
+				stx framesSinceLastScroll
+				cpx delayAmount
+				bne .smoothScrollLoop ; don't smooth scroll, carry on around for another frame				
 				jsr smoothScroll
+				ldx #0
+				stx framesSinceLastScroll
+				lda #5
+				cmp scrollCounter
+				beq prepareLine
 				dec scrollCounter				
 				bne .smoothScrollLoop
 				
-scrollNow		subroutine
+scrollNow
+				jsr workOutShipPosition
 				jsr scroll
-				jsr drawscreen
 				jsr updatePeriodic
 				jmp scrolled
+prepareLine
+				dec scrollCounter
+				jsr drawline
+				jmp .smoothScrollLoop
 
 smoothScroll	subroutine
-				
 				; first scroll the double character scollables
 				ldx #8 * numberOfScrollableCharacters
 .loop
@@ -181,12 +213,10 @@ smoothScroll	subroutine
 				sta singleScrollable,x
 				cpx #0
 				bne .singleLoop
-
 .finished		
 				lda scrollCounter
 				cmp #1
 				beq .resetScroll
-
 				rts
 .resetScroll
 				ldx #8 * numberOfScrollableCharacters ; 8 bytes per character
@@ -330,8 +360,8 @@ onceOnlyInit	subroutine
 				sei ; don't need maskable interrupts
 				
 				lda #$7f
-			  	;sta $912e     ; disable interrupts
-  				;sta $912d
+			  	sta $912e     ; disable interrupts
+  				sta $912d
   				
   				sta $911e     ; disable non maskable interrupts
 				lda #8
@@ -354,6 +384,11 @@ onceOnlyInit	subroutine
 				
 				lda #0
 				sta levelNumber
+
+				lda #10
+				sta delayReduction
+				
+				jsr prepareTowerPositions
 				rts
 
 init			subroutine
@@ -400,6 +435,9 @@ setUpLevel
 					
 				lda physicsCountdownInitialValue
 				sta physicsCountdown	
+				
+				lda #spacePrintable ; ship hasn't collided with anything yet
+				sta charReplaced
 				rts
 
 defaultBackground		equ 	3
@@ -530,38 +568,68 @@ printline		subroutine
 				rts
 
 scroll			subroutine
+				; not yet drawn ship. Indicate this by setting the replacedChar with 255 (invalid value it will never encounter)
+				lda #255
+				sta charReplaced
+				
 				clc
 				ldx #screenstarthigh	; put start of screen hi in cursor position
 				ldy #22 				; screen scroll start lo
 				stx.z cursor + 1
 				sty.z cursor
 				ldy #0			; current *X* position
-				ldx #21			; number of lines left to scroll
-.1				
+				ldx #0			; number of current line
+.lineLoop				
 				iny 			; (2) cycles. Gain 4
-				lda (cursor),y 	; (5+) get existing character
+				lda (cursor),y 	; (5+) get existing character. Absolute addressing would be (4)
 				dey				; (2)
-				sta (cursor),y	; (6) store in previous location
+				sta (cursor),y	; (6) store in previous location. Absolute addressing would be (4)
 				iny 			; (2) 
-				cpy #21
-				bne .1 			; (2) continue within line
-				ldy #0 			; (?) reset back to start of line counter
-				dex 			; (2) next line
-				beq .finished
-				lda.z cursor
-				clc
-				adc #22
-				sta.z cursor
-				bcc	.1 			; continue with next line
-				inc.z cursor + 1
-				jmp .1 			; continue with next line						
+				cpy #21			; (2)
+.2				; .1 to .2 : 19+ originally
+				bne .lineLoop 			; (2) continue within line
+				
+				; copy in the next line from the buffer
+				lda nextLine,x
+				sta (cursor),y
+				
+				; is it time to draw the ship?
+				cpx shipy
+				bmi .notDrawShip
+				lda charReplaced
+				cmp #255
+				bne .notDrawShip ; already drawn it
+				txa
+				pha
+				tya
+				pha
+				jsr drawship
+				pla
+				tay
+				pla
+				tax
+.notDrawShip
+
+				; move to next line
+				ldy #0 			; (2) reset back to start of line counter
+				inx				; (2) next line
+				cpx #screenHeight - 3
+				beq .finished	; (3) or (4) if page boundary crossed
+				
+
+				lda.z cursor	; (3)
+				clc				; (2)
+				adc #22			; (2)
+				sta.z cursor	; (3)
+				bcc	.lineLoop			; (3) or (4) continue with next line
+				inc.z cursor + 1 ; (5)
+				jmp .lineLoop 			;  (3) continue with next line						
 .finished
 				rts				; done
 
 ;;;; Draw a character at the given x and y coordinates
 ; x coord		x
 ; y coord		y
-
 
 drawchar		subroutine
 				;; initialise values
@@ -594,7 +662,11 @@ storeCharSaveReplaced
 				
 storechar		ldx #0			; offset to allow indirect addressing -- should really use zero page
 				lda	character	; char to print
+				; if it's 255, don't draw
+				cmp #255
+				beq .done
 				sta (cursor),x				
+.done
 				rts				
 
 addcursor		subroutine
@@ -622,10 +694,24 @@ fuelRow				dc 	10 ; height above the ground or tower
 fuelChar			dc 	3
 towercolumnsleft	dc	16
 
+prepareTowerPositions	subroutine
+				ldy #nextLineLength - 1
+				lda #spacePrintable
+.loop
+				sta nextLine,y
+				cpy #0
+				beq .done
+				dey
+				jmp .loop
+.done
+				rts
+				
+				
 ; color and colorcharacter already set
 ; towerMiddleCharacter already set for the non-top/bottom character, and also in a
 ; towerTopCharacter already set
 
+; prepares nextLine with a line to copy in during the next scroll
 drawtowerScope  subroutine
 .shortTower
 				cpy #0
@@ -636,81 +722,54 @@ drawtowerScope  subroutine
 .not0
 				lda towerTopCharacter
 				jmp .draw
-drawtower		
-				;; If the tower is zero height, draw a space at the bottom and then draw a gap full height
-				;; if the screen
-				ldy towerheight
-				cpy #2 ; One high, so print the top character instead of the middle
-				bmi .shortTower
-.draw
-				sta character
-
-				;; draw first block at bottom right, then build up from there
-				ldx #screenwidth - 1
-				ldy #screenheight - 2
-				jsr drawchar
-				
-				lda #screenwidth
-				sta diff
-				
-				ldy towerheight
-				cpy #0
-				beq .drawnBottom
-				dey			; subtract one from tower height as bottom character is never drawn
-				
-.1				beq .drawnBottom ; finished drawing bottom of tower?
-
-				;;;; inlining the subcursor function to save 12 cycles
-				;jsr subcursor ; move up a line				
-				sec
-				lda cursor
-				sbc diff
-				sta cursor
-				bcs .subfinished
-				dec cursor + 1
-				;;;;; end subcursor inlining			
-.subfinished
-				;;;; inlining storechar to save 12 cycles
-				;jsr storechar				
-				ldx #0			; offset to allow indirect addressing -- should really use zero page
-				lda	character	; char to print
-				sta (cursor),x
-.storecharcomplete1
-				cpy #2
-				beq .switchToTopCharacter
-				dey
-				jmp .1
 .switchToTopCharacter
 				lda towerTopCharacter ; use this next
 				sta character
 				dey
-				jmp .1										
-.drawnBottom	; now draw the gap
-				lda #spacePrintable
+				bne .1
+				jmp .drawnBottom										
+drawtower		
+				;; If the tower is zero height, draw a space at the bottom and then draw a gap full height
+				;; if the screen
 				sta character
+				ldy towerheight
+				cpy #2 ; One high, so print the top character instead of the middle
+				bmi .shortTower
+.draw
+				;; draw first block at bottom right, then build up from there
+				ldx #nextLineLength - 1			
+				ldy towerheight
+				cpy #0
+				beq .drawnBottom
+				dey			; subtract one from tower height as bottom character is never drawn				
+				beq .drawnBottom ; finished drawing bottom of tower?
+.1				dex
+.subfinished
+				sta nextLine,x
+.storecharcomplete1
+				cpy #2	;[2]
+				beq .switchToTopCharacter ;[2,3]
+				dey ;[2]
+				bne .1 ;[3,2] 
+				
+.drawnBottom	; now draw the gap
 				ldy gapWidth
 				lda towerheight		; if tower height is zero, don't draw the top
 				cmp #0
-				bne .3
+				bne .readyToDrawGap
 				ldy #screenheight - 2
-				
+.readyToDrawGap
+				lda #spacePrintable
+				sta character
+				cpy #0
 .3				beq .drawnGap
-				
-				;;;; inlining the subcursor function to save 12 cycles
-				;jsr subcursor ; move up a line				
-				sec
-				lda cursor
-				sbc diff
-				sta cursor
-				bcs .subfinished2
-				dec cursor + 1
-				;;;;; end subcursor inlining		
+				dex ; one line up					
 .subfinished2
-				;;;; inlining storechar to save 12 cycles
-				;jsr storechar				
-				ldx #0			; offset to allow indirect addressing -- should really use zero page
-				lda	character	; char to print
-				sta (cursor),x
+				lda character ; TODO, see if we can remove the need to do this
+				sta nextLine,x
+				cpx #0
+				beq .doneTower
+				
 .storecharcomplete2
 				lda towercolumnsleft
 				cmp fuelColumn
@@ -722,15 +781,9 @@ drawtower
 				
 				; print fuel
 				lda fuelChar; this is variable, as we may be drawing the first or second character
-				sta character
-				;;;; inlining storechar to save 12 cycles
-				;jsr storechar				
-				ldx #0			; offset to allow indirect addressing -- should really use zero page
-				lda	character	; char to print
-				sta (cursor),x
+				sta nextLine,x
 .storecharcomplete3
 				lda #spacePrintable ; back to printing spaces
-				sta character
 				
 				; do we need to print the second edge?
 				lda fuelChar
@@ -742,7 +795,6 @@ drawtower
 				lda #fuelLeftPrintable
 				sta fuelChar
 				lda #6
-;;				jsr random ; need to choose 1 to 6
 				and #$7 ; random number 0 to 7
 				ora #$80 ; set MSB to delay drawing until after next tower
 				cmp #$87
@@ -770,41 +822,20 @@ drawtower
 				; now draw the the top part
 				ldy #1 ; draw 1 top character then switch to middle				
 				lda topTowerEdgeCharacter
-				sta character
-.4				lda.z cursor ; reached top line of screen?
-				cmp #21
-				beq .5				
-				;;;; inlining storechar to save 12 cycles
-				;jsr storechar				
-				ldx #0			; offset to allow indirect addressing -- should really use zero page
-				lda	character	; char to print
-				sta (cursor),x
-.storecharcomplete4
-				;;;; inlining the subcursor function to save 12 cycles
-				;jsr subcursor ; move up a line				
-				sec
-				lda cursor
-				sbc diff
-				sta cursor
-				bcs .subfinished3
-				dec cursor + 1
-				;;;;; end subcursor inlining		
-.subfinished3		
+.4				
+				sta	nextLine,x
+				cpx #0
+				beq .5	
+				dex
 				dey
 				bne .4
 				lda topTowerMiddleCharacter
-				sta character
 				jmp .4
-.5				
+.5			
+.doneTower	
 				rts
 			
 defaulttowerwidth		equ		4
-
-; TODO, move to zero page to make quicker
-towercharacters			dc.b	3,0,0,2;
-towerTopCharacters 		dc.b	0, spacePrintable, 0, spacePrintable; to be filled in with real tower characters. Must immediately follow towercharacters
-topTowerCharacters		dc.b	0,0,0,0;
-topTowerEdgeCharacters	dc.b	0,0,0,0;
 
 bottomscreencharacter	equ		4
 fuelcharacter			equ 	6
@@ -867,7 +898,6 @@ drawline		subroutine
 				lda fuelColumn
 				and #$7f
 				sta fuelColumn
-				
 				jmp .drawit			
 
 ;;;; Random number generator
@@ -906,10 +936,30 @@ delay			ldx delayAmount
 rasterdelay
 .rasterloop
 				lda rasterline
-				cmp #121 ; 124
+				cmp #130 ; 121
 				bmi .rasterloop
-		;		lda #240
-		;		sta borderPaper
+				rts
+
+workOutShipPosition
+				ldx shipx
+				ldy shipy
+				lda #255 ; don't draw
+				sta character
+				jsr drawchar
+				
+				lda cursor
+				sta shipToBeDrawnAt1
+				lda cursor + 1
+				sta shipToBeDrawnAt1 + 1
+				
+				lda #screenwidth
+				sta diff
+				jsr addcursor
+				
+				lda cursor
+				sta shipToBeDrawnAt2
+				lda cursor + 1
+				sta shipToBeDrawnAt2 + 1
 				rts
 
 drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor Y value
@@ -936,31 +986,29 @@ drawship		; work out ship offset in pixels from 0 to 7. Take top 3 bits of minor
 				adc #shipTopPrintable
 				sta character
 				
-drawshipchar	ldx shipx
-				ldy shipy
-				jsr drawchar
-				lda charReplaced
+drawshipchar	
+				ldx #0
+				lda (shipToBeDrawnAt1),x
 				sta charReplaced2 ; store this for collision detection later
 				lda character
+				sta (shipToBeDrawnAt1),x
+
 				cmp #spacePrintable
 				beq .keepSpace
 				clc
 				adc #8 ; bottom set are 8 bytes further on
 				sta character
 .keepSpace
-				lda #22
-				jsr addcursor
-				jsr storeCharSaveReplaced
+				lda (shipToBeDrawnAt2),x
+				sta charReplaced
+				lda character
+				sta (shipToBeDrawnAt2),x
 				rts
 				
 clearship		lda #spacePrintable
 				sta character
 				jmp drawshipchar
-				
-drawscreen		subroutine
-				jsr drawline
-				rts
-				
+								
 ; carry flag set if space just pressed, clear otherwise
 lastkey			dc	0
 	
@@ -970,12 +1018,14 @@ control			subroutine
 				bne .notEmpty
 				rts
 .notEmpty
-				lda keypress
+				lda #0
+				sta $9120
+				lda $9121
 				ldx lastkey
 				sta lastkey
-				cpx #keyspace
+				cpx #254;keyspace
 				beq .notpress 
-				cmp #keyspace
+				cmp #254;eyspace
 				bne .notpress
 				; space just pressed
 				; apply an impulse
@@ -1085,7 +1135,6 @@ copyROMCharacters	subroutine
 				rts
 								
 defineCharacters	subroutine
-			;	jsr copyROMCharacters
 				rts
 				
 soundVolume		equ		36878
@@ -1325,11 +1374,20 @@ startScreen     subroutine
 								
 waitForStartKey subroutine
 				jsr random
-				lda keypress
-				cmp #34 ; c for continue
+				lda #0
+				sta $9120
+				lda $9121
+				cmp #255
+				beq waitForStartKey
+
+				cmp #254 ; space key
 				beq .done
-				cmp #32 ; space key
-				bne waitForStartKey
+	
+				cmp #247 ; b key
+				beq .restart
+				jmp waitForStartKey
+					
+.restart
 				lda #0
 				sta levelNumber ; reset level to start
 				lda #10
@@ -1350,7 +1408,7 @@ waitForStartKey subroutine
 ;       19-20: number of moves before switching to next level (lo,hi)
 
 ;       21   : physics countdown timer initial value
-;       22   : delay default value
+;       22   : frames between scroll
 ;		23   : flags
 ;		24	 ; background map number
 
@@ -1367,23 +1425,23 @@ spaceLevel				dc.b	space,space,space,space
 						dc.b	starRightPrintable,starLeftPrintable,space,space
 						dc.b	1,14,8 ; black border, black paper
 						dc.b	150,1
-						dc.b	2, 24, 0, 1
+						dc.b	3, 1, 0, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,0
-						dc.b	150,1 
-						dc.b	1,48, 1, 0
+						dc.b	1,2 
+						dc.b	3,2, 1, 0
 											
 towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	8,8,0
-						dc.b	150,1 
-						dc.b	1,48, 1, 0
+						dc.b	10,10,0
+						dc.b	1,2 
+						dc.b	3,2, 1, 0
 						
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1391,7 +1449,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,7,0
 						dc.b	150,1 
-						dc.b	1,48, 1, 0
+						dc.b	2,2, 1, 0
 						
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1399,7 +1457,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	5,20,0
 						dc.b	150,1 
-						dc.b	1,48, 1, 0
+						dc.b	2,2, 1, 0
 						
 maxLevel				equ 	7
 
@@ -1463,11 +1521,11 @@ setupTowerCharacters	subroutine
 				sta physicsCountdownInitialValue
 				
 				jsr .getNext
-				sec
-				sbc delayReduction
-				cmp #minDelayAmount
-				bpl .delayCorrect
-				lda #minDelayAmount
+				;sec
+				;sbc delayReduction
+				;cmp #minDelayAmount
+				;bpl .delayCorrect
+				;lda #minDelayAmount
 .delayCorrect
 				sta delayAmount
 				
