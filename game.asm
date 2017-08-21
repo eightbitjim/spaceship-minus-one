@@ -49,7 +49,7 @@ colorcursor		equ		243
 shipdy			equ		207
 jetSound		equ		205
 scrollCounter	equ		204
-fuelIncreaseLeft equ 	179
+; spare variable to use at 179
 fuel			equ 	178
 ;scoreHi			equ 	177
 ;scoreLo			equ		176
@@ -88,7 +88,7 @@ flags			dc 0 ; bit 0: decrease fuel if set
 delayReduction	dc 0	; amount to reduce delay by. Increased by level wrap-around
 minDelayAmount	equ	5
 delayReductionPerWraparound	equ 10 ; amount to reduce delay by each time all levels are completed
-fuelActiveFlag	equ #1
+
 
 .outOfFuel
 				jmp restart
@@ -106,7 +106,7 @@ collision subroutine
 				ldy #1
 				sta (shipToBeDrawnAt1),y
 				sta (shipToBeDrawnAt2),y
-				jmp .increaseFuel		
+				jmp .increaseFuelNow	
 .collectFuelRight
 				lda #spacePrintable
 				ldy #0
@@ -116,13 +116,14 @@ collision subroutine
 				sta (shipToBeDrawnAt2),y
 				inc shipToBeDrawnAt1
 				inc shipToBeDrawnAt2
-				jmp .increaseFuel		
-.increaseFuel
+				jmp .increaseFuelNow	
+.increaseFuelNow
 				jsr increaseScoreBy100
 				lda #128
 				sta fuelSoundCount
 				lda #fuelIncreaseAmount
-				sta fuelIncreaseLeft
+				jsr increaseFuel
+				jsr increaseFuel
 .finishedNotFatal
 				lda #0 ; set zero flag to indicate non-fatal
 				rts
@@ -233,25 +234,19 @@ smoothScroll	subroutine
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				jsr increaseScoreAndProgress
-				
-				; if flag is set, decrease or increase fuel
-				lda flags
-				and #fuelActiveFlag
-				beq .return
-				
+				lda #1 ; clear zero flag
+				rts
+								
+increaseFuel	subroutine		
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
-				lda #0
-				cmp fuelIncreaseLeft
-				beq .decreaseFuel
 
-				; otherwise increase fuel
 				lda #255
 				cmp fuel
-				beq .doneIncreaseAndReadyToReturn		
+				beq .doneIncrease	
 				inc fuel
-				lda #58  + 128; '9' + 1
-.increaseFuel
+				lda #58  + 128; '9' + 1	
+.digitLoop	
 				inc screenstart,x
 				cmp screenstart,x
 				bne .doneIncrease
@@ -260,15 +255,14 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				lda #58  + 128; '9' + 1
 				dex
 				cpx #5
-				bne .increaseFuel				
+				bne .digitLoop				
 .doneIncrease		
-.doneIncreaseAndReadyToReturn
-				dec fuelIncreaseLeft
-.return
-				lda #1 ; clear zero flag
 				rts
 
-.decreaseFuel
+decreaseFuel 	subroutine
+				; draw fuel on screen
+				ldx #8 ; digit number 3, plus "SCORE" text
+				
 				lda fuel
 				cmp #0
 				bne .notEmpty
@@ -1019,14 +1013,17 @@ control			subroutine
 				rts
 .notEmpty
 				lda #0
+				
+				; scan keyboard for key presses
 				sta $9120
 				lda $9121
 				ldx lastkey
 				sta lastkey
-				cpx #254;keyspace
+				cpx #254
 				beq .notpress 
-				cmp #254;eyspace
+				cmp #254
 				bne .notpress
+				
 				; space just pressed
 				; apply an impulse
 thrust			
@@ -1037,6 +1034,7 @@ thrust
 				lda #directionUp
 				sta shipDirection	
 				jsr swapMinorY
+				jsr decreaseFuel
 .notpress		
 				rts
 			
@@ -1412,6 +1410,7 @@ waitForStartKey subroutine
 ;		23   : flags
 ;		24	 ; background map number
 
+fuelActiveFlag	equ #1
 space	equ spacePrintable
 
 ; specify the order of levels. 255 instructs to wrap around
@@ -1425,7 +1424,7 @@ spaceLevel				dc.b	space,space,space,space
 						dc.b	starRightPrintable,starLeftPrintable,space,space
 						dc.b	1,14,8 ; black border, black paper
 						dc.b	150,1
-						dc.b	3, 1, 0, 1
+						dc.b	3, 1, 1, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
@@ -1433,7 +1432,7 @@ towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,b
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,0
 						dc.b	1,2 
-						dc.b	3,2, 1, 0
+						dc.b	3,2, 0, 0
 											
 towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1441,7 +1440,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,0
 						dc.b	1,2 
-						dc.b	3,2, 1, 0
+						dc.b	3,2, 0, 0
 						
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1449,7 +1448,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,7,0
 						dc.b	150,1 
-						dc.b	2,2, 1, 0
+						dc.b	2,2, 0, 0
 						
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1457,7 +1456,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	5,20,0
 						dc.b	150,1 
-						dc.b	2,2, 1, 0
+						dc.b	2,2, 0, 0
 						
 maxLevel				equ 	7
 
