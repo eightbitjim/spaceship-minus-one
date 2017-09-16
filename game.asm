@@ -358,6 +358,7 @@ onceOnlyInit	subroutine
   				sta $912d
   				
   				sta $911e     ; disable non maskable interrupts
+  				
 				lda #8
 				sta scrollCounter
 				
@@ -1006,19 +1007,20 @@ clearship		lda #spacePrintable
 ; carry flag set if space just pressed, clear otherwise
 lastkey			dc	0
 	
-control			subroutine
+control			subroutine				
 				lda fuel	; if fuel is exhausted, no control is possible
-				;cmp #0
 				bne .notEmpty
 				rts
 .notEmpty
-				lda #0
-				
 				; scan keyboard for key presses
+
+				lda #0				
 				sta $9120
+
 				lda $9121
 				ldx lastkey
 				sta lastkey
+
 				cpx #254
 				beq .notpress 
 				cmp #254
@@ -1031,9 +1033,14 @@ thrust
 				sta jetSound
 				lda #shipimpulse
 				sta shipdy
+				
+				lda shipDirection
+				cmp #directionUp
+				beq .alreadyGoingUp
 				lda #directionUp
 				sta shipDirection	
 				jsr swapMinorY
+.alreadyGoingUp
 				jsr decreaseFuel
 .notpress		
 				rts
@@ -1432,7 +1439,7 @@ towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,b
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,0
 						dc.b	1,2 
-						dc.b	3,2, 0, 0
+						dc.b	4,4, 0, 0
 											
 towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
