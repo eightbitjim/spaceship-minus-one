@@ -10,7 +10,8 @@ restart
 				jsr init
 				jsr thrust ; give the ship a short thrust to start off
 				jsr drawline
-				jmp scrollNow
+				jsr scrollNow
+				jmp smoothScrollLoop
 				
 welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
 startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
@@ -18,6 +19,11 @@ startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
 continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 29, 29, 29, 18, "   BEGINNING    ",0
 
 welcometerminator 	dc 0
+
+joystickDDR1		equ		$9113
+joystickDDR2		equ		$9122
+joystickIn1			equ		$9111
+joystickIn2			equ		$9120
 
 directionUp			equ		$ff
 directionDown		equ		$01
@@ -49,8 +55,10 @@ colorcursor		equ		243
 shipdy			equ		207
 jetSound		equ		205
 scrollCounter	equ		204
-; spare variable to use at 179
+lastkey			equ		179
 fuel			equ 	178
+shipdx			equ		177
+shipMinorX		equ		176
 ;scoreHi			equ 	177
 ;scoreLo			equ		176
 shipx			equ		171
@@ -79,7 +87,8 @@ towercharacters		equ 27;	 4 bytes
 towerTopCharacters 	equ 31; 4 bytes
 topTowerCharacters	equ 35; 4 bytes 
 topTowerEdgeCharacters	equ 39; 4 bytes 
-framesSinceLastScroll	equ 43
+;framesSinceLastScroll	equ 43
+lastFrameWasScroll	equ 43
 
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
@@ -136,16 +145,17 @@ endGame
 				jsr stopSound
 				jmp restart
 
-scrolled subroutine
-				lda #8
-				sta scrollCounter
+smoothScrollLoop			
+				lda lastFrameWasScroll
+				cmp #0  
+				beq .normal
 				lda #0
-				sta framesSinceLastScroll
-				jmp .dontdrawship
-.smoothScrollLoop			
+				sta lastFrameWasScroll
+				jmp dontdrawship
+.normal
 				jsr workOutShipPosition
 				jsr drawship
-.dontdrawship
+dontdrawship
 				lda charReplaced
 				cmp #spacePrintable
 				beq .doneCollision1
@@ -167,29 +177,21 @@ scrolled subroutine
 				jsr rasterdelay
 				jsr clearship
 				jsr physics		
-				ldx framesSinceLastScroll
-				inx
-				stx framesSinceLastScroll
-				cpx delayAmount
-				bne .smoothScrollLoop ; don't smooth scroll, carry on around for another frame				
-				jsr smoothScroll
-				ldx #0
-				stx framesSinceLastScroll
-				lda #5
-				cmp scrollCounter
-				beq prepareLine
-				dec scrollCounter				
-				bne .smoothScrollLoop
+
+				jmp smoothScrollLoop
 				
 scrollNow
 				jsr workOutShipPosition
 				jsr scroll
 				jsr updatePeriodic
-				jmp scrolled
+
+				lda #8
+				sta scrollCounter
+				sta lastFrameWasScroll
+				rts
 prepareLine
-				dec scrollCounter
 				jsr drawline
-				jmp .smoothScrollLoop
+				jmp donePrepareLine
 
 smoothScroll	subroutine
 				; first scroll the double character scollables
@@ -217,8 +219,7 @@ smoothScroll	subroutine
 .finished		
 				lda scrollCounter
 				cmp #1
-				beq .resetScroll
-				rts
+				bne .finishedSmoothScroll
 .resetScroll
 				ldx #8 * numberOfScrollableCharacters ; 8 bytes per character
 .loop2
@@ -230,6 +231,17 @@ smoothScroll	subroutine
 				sta leftEdges,x
 				cpx #0
 				bne	.loop2
+
+.finishedSmoothScroll
+				rts
+				
+handleFullScroll
+				lda #5
+				cmp scrollCounter
+				beq prepareLine
+donePrepareLine
+				dec scrollCounter				
+				beq	scrollNow 
 				rts
 				
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
@@ -349,18 +361,21 @@ increaseLevel	subroutine
 				stx levelNumber
 				jsr setUpLevel
 				rts
-
+				
 onceOnlyInit	subroutine
 				sei ; don't need maskable interrupts
 				
 				lda #$7f
 			  	sta $912e     ; disable interrupts
-  				sta $912d
+  				sta $912d  				
+  				sta $911e     ; disable non maskable interrupts from restore key
   				
-  				sta $911e     ; disable non maskable interrupts
+  				lda $912e
+  				lda $912d
   				
 				lda #8
 				sta scrollCounter
+				sta lastFrameWasScroll
 				
 				; make sure the screen memory is in the right place
 				lda #22 ; 22 for expanded VIC, 150 for unexpanded
@@ -379,7 +394,8 @@ onceOnlyInit	subroutine
 				
 				lda #0
 				sta levelNumber
-
+				sta joystickDDR1	; prepare for joystick input
+				
 				lda #10
 				sta delayReduction
 				
@@ -413,6 +429,7 @@ init			subroutine
 				
 				lda #8
 				sta scrollCounter
+				sta lastFrameWasScroll
 				
 				lda #4
 				sta fuelColumn
@@ -433,6 +450,10 @@ setUpLevel
 				
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
+				
+				lda #0
+				sta shipdx
+				sta shipMinorX
 				rts
 
 defaultBackground		equ 	3
@@ -929,10 +950,25 @@ delay			ldx delayAmount
 				
 				; wait for raster to enter border
 rasterdelay
+		;		lda #3
+		;		sta borderPaper
 .rasterloop
 				lda rasterline
-				cmp #130 ; 121
+				cmp #131 ; TODO: different value for NTSC, probably lower
+				bpl .rasterloop
+				
+		;		lda #0
+		;		sta borderPaper
+				
+.rasterLowerLoop
+
+				lda rasterline
+				cmp #130 ;130; TODO: different value for NTSC, probably lower
 				bmi .rasterloop
+
+		;		lda #1
+		;		sta borderPaper
+
 				rts
 
 workOutShipPosition
@@ -1003,28 +1039,27 @@ drawshipchar
 clearship		lda #spacePrintable
 				sta character
 				jmp drawshipchar
-								
-; carry flag set if space just pressed, clear otherwise
-lastkey			dc	0
-	
+									
 control			subroutine				
 				lda fuel	; if fuel is exhausted, no control is possible
 				bne .notEmpty
 				rts
 .notEmpty
-				; scan keyboard for key presses
+				; scan keyboard for key presses or joystick
+				lda #0
+				sta $9120 ; reset keyboard state
 
-				lda #0				
-				sta $9120
-
-				lda $9121
+				lda joystickIn1
+				ora #255 - 32 ; set all other bits. Only care about fire button
+				and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
+								
 				ldx lastkey
 				sta lastkey
 
-				cpx #254
-				beq .notpress 
-				cmp #254
-				bne .notpress
+				cpx #255 ; 255 indicates nothing is pressed
+				bne .notpress 
+				cmp #255
+				beq .notpress
 				
 				; space just pressed
 				; apply an impulse
@@ -1033,6 +1068,13 @@ thrust
 				sta jetSound
 				lda #shipimpulse
 				sta shipdy
+				clc
+				adc shipdx
+				adc shipdx
+				bcc .storedx
+				lda #255
+.storedx
+				sta shipdx
 				
 				lda shipDirection
 				cmp #directionUp
@@ -1046,15 +1088,43 @@ thrust
 				rts
 			
 physics			subroutine
-				; first, is it actually time to update physics
+				; update horizontal position 2 times
+				lda shipMinorX
+				clc
+				adc shipdx
+				sta shipMinorX
+				bcc .notSmoothScroll1
+				jsr smoothScroll
+				jsr handleFullScroll
+				
+.notSmoothScroll1
+				lda shipMinorX
+				clc
+				adc shipdx
+				sta shipMinorX
+				bcc .notSmoothScroll2
+				jsr smoothScroll
+				jsr handleFullScroll
+
+
+.notSmoothScroll2
+				; is it time to update the rest of the physics
 				dec physicsCountdown
 				beq .timeToUpdate
 				rts
 .timeToUpdate
 				lda physicsCountdownInitialValue ; reset countdown timer
 				sta physicsCountdown
-				
-				; update ship position. First the minor position
+			
+				; update ship x position
+				lda shipdx
+				cmp #2
+				bpl .donedx
+				sec
+				sbc #2
+				sta shipdx		
+.donedx
+				; update ship y position. First the minor position
 				lda shipMinorY
 				clc
 				adc shipdy
@@ -1379,19 +1449,23 @@ startScreen     subroutine
 								
 waitForStartKey subroutine
 				jsr random
+
 				lda #0
-				sta $9120
+				sta $9120 ; reset keyboard state
 				lda $9121
-				cmp #255
-				beq waitForStartKey
+								
+				cmp #247 ; b key
+				beq .restart
 
 				cmp #254 ; space key
 				beq .done
-	
-				cmp #247 ; b key
-				beq .restart
-				jmp waitForStartKey
-					
+				
+				lda joystickIn1
+				and #32 ; set all other bits. Only care about fire button
+				cmp #32								
+				beq waitForStartKey
+				jmp .done
+				
 .restart
 				lda #0
 				sta levelNumber ; reset level to start
@@ -1431,15 +1505,15 @@ spaceLevel				dc.b	space,space,space,space
 						dc.b	starRightPrintable,starLeftPrintable,space,space
 						dc.b	1,14,8 ; black border, black paper
 						dc.b	150,1
-						dc.b	3, 1, 1, 1
+						dc.b	1, 1, 1, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	8,24,0
+						dc.b	8,24,2
 						dc.b	1,2 
-						dc.b	4,4, 0, 0
+						dc.b	1, 1, 0, 0
 											
 towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1447,7 +1521,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,0
 						dc.b	1,2 
-						dc.b	3,2, 0, 0
+						dc.b	1,1, 0, 0
 						
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1455,7 +1529,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,7,0
 						dc.b	150,1 
-						dc.b	2,2, 0, 0
+						dc.b	1, 1, 0, 0
 						
 						dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1463,7 +1537,7 @@ towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	5,20,0
 						dc.b	150,1 
-						dc.b	2,2, 0, 0
+						dc.b	1 ,1, 0, 0
 						
 maxLevel				equ 	7
 
@@ -1527,12 +1601,6 @@ setupTowerCharacters	subroutine
 				sta physicsCountdownInitialValue
 				
 				jsr .getNext
-				;sec
-				;sbc delayReduction
-				;cmp #minDelayAmount
-				;bpl .delayCorrect
-				;lda #minDelayAmount
-.delayCorrect
 				sta delayAmount
 				
 				jsr .getNext
@@ -1554,6 +1622,9 @@ setupTowerCharacters	subroutine
 resetScroll		subroutine
 				; reset smooth scrolling back to the start
 				lda scrollCounter
+				cmp #8  
+				beq .scrollDone
+				cmp #0
 .scrollLoop
 				beq .scrollDone
 				jsr smoothScroll
@@ -1562,6 +1633,7 @@ resetScroll		subroutine
 .scrollDone
 				lda #8
 				sta scrollCounter
+				sta lastFrameWasScroll
 				rts
 				
 programEnd
