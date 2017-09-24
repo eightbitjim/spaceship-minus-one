@@ -451,9 +451,6 @@ setUpLevel
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
 				
-				lda #0
-				sta shipdx
-				sta shipMinorX
 				rts
 
 defaultBackground		equ 	3
@@ -1069,7 +1066,7 @@ thrust
 				lda #shipimpulse
 				sta shipdy
 				clc
-				adc shipdx
+				lda #80
 				adc shipdx
 				bcc .storedx
 				lda #255
@@ -1105,9 +1102,23 @@ physics			subroutine
 				bcc .notSmoothScroll2
 				jsr smoothScroll
 				jsr handleFullScroll
-
-
 .notSmoothScroll2
+				lda shipMinorX
+				clc
+				adc shipdx
+				sta shipMinorX
+				bcc .notSmoothScroll3
+				jsr smoothScroll
+				jsr handleFullScroll
+.notSmoothScroll3
+				lda shipMinorX
+				clc
+				adc shipdx
+				sta shipMinorX
+				bcc .notSmoothScroll4
+				jsr smoothScroll
+				jsr handleFullScroll
+.notSmoothScroll4
 				; is it time to update the rest of the physics
 				dec physicsCountdown
 				beq .timeToUpdate
@@ -1117,12 +1128,13 @@ physics			subroutine
 				sta physicsCountdown
 			
 				; update ship x position
+				ldy #2 ; amount to reduce by
 				lda shipdx
-				cmp #2
-				bpl .donedx
-				sec
-				sbc #2
-				sta shipdx		
+.dxloop
+				beq .donedx
+				dec shipdx
+				dey
+				bne .dxloop								
 .donedx
 				; update ship y position. First the minor position
 				lda shipMinorY
@@ -1237,13 +1249,14 @@ stopSound
 				rts
 				
 updateSound subroutine
-				ldx #0
-				lda jetSound
-				cmp #230
-				bmi .makeSound ; don't set to make a sound, just use 0 (sound off)
-				and #3
-				beq .makeSound
-				ldx jetSound
+;				ldx #0
+;				lda jetSound
+;				cmp #230
+;				bmi .makeSound ; don't set to make a sound, just use 0 (sound off)
+;				and #3
+;				beq .makeSound
+;				ldx jetSound
+				ldx shipdx
 .makeSound
 				stx voice3
 				
@@ -1301,122 +1314,6 @@ screenWidth			equ 23
 screenHeight		equ 24
 
 explode subroutine
-				lda #$ff
-				sta explodeCountLo	
-				lda #$1
-				sta explosionSize	
-				
-				lda shipy ; if ship is at bottom of screen, move up a bit so the explosion is visible
-				cmp #21
-				bmi .notShiftShipUp
-				lda #21
-				sta shipy
-.notShiftShipUp
-				cmp #1
-				bpl .explodeLoop
-				
-				lda #1 ; shift ship down a bit
-				sta shipy
-.explodeLoop
-				; explode count
-				lda explodeCountLo
-				sta voice3
-				sta voice2
-				sta voice1
-				sta voice0
-		
-				; draw explosion effect
-				; work out left edge and right edge of current frame
-
-				; RIGHT EDGE
-				lda shipx
-				clc
-				adc explosionSize
-				cmp #screenWidth
-				bmi .notOffRightEdge
-				lda #screenWidth - 1
-.notOffRightEdge
-				sta explosionRightEdge
-				
-				; LEFT EDGE
-				lda shipx
-				sec
-				sbc explosionSize
-				bmi .offLeftEdge
-				jmp .doneLeftEdge
-.offLeftEdge
-				lda #0
-.doneLeftEdge
-				sta explosionLeftEdge
-				
-				; BOTTOM EDGE
-				lda shipy
-				clc
-				adc explosionSize
-				cmp #screenHeight
-				bmi .notOffBottomEdge
-				lda #screenHeight
-.notOffBottomEdge
-				sta explosionBottomEdge
-				
-				; TOP EDGE
-				lda shipy
-				sec
-				sbc explosionSize
-				cmp #1
-				bmi .offTopEdge
-				jmp .doneTopEdge
-.offTopEdge
-				lda #1
-.doneTopEdge
-				sta explosionTopEdge								
-					
-				; now draw the explosion box
-				lda #explodePrintable
-				sta character
-
-				lda explosionTopEdge
-				sta explosionY
-				
-.lineLoop
-				lda explosionLeftEdge
-				sta explosionX
-
-				ldx explosionX
-				ldy explosionY
-				jsr drawchar
-				ldy #0
-.columnLoop
-				jsr storechar
-				lda explosionColor
-				sta (colorcursor),y
-				lda #1
-				jsr addcursor
-				iny
-				inc explosionX
-				lda explosionX
-				cmp explosionRightEdge
-				bne .columnLoop
-				
-				inc explosionY
-				lda explosionY
-				cmp explosionBottomEdge
-				bne .lineLoop
-		
-				; increment counters
-				jsr delay
-
-				dec explodeCountLo
-				dec explodeCountLo
-				dec explodeCountLo
-				dec explodeCountLo
-				inc explosionSize
-				lda explosionSize
-				cmp #23 ; max explosion size
-				beq .done
-				jmp .explodeLoop			
-.done			
-				; finished
 				rts
 
 startScreen     subroutine
@@ -1472,6 +1369,11 @@ waitForStartKey subroutine
 				lda #10
 				sta delayReduction
 .done
+				lda #0
+				sta shipMinorX
+				
+				lda #200
+				sta shipdx
 				rts
 
 ; level format:
