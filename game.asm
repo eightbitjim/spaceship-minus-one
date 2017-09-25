@@ -13,11 +13,11 @@ restart
 				jsr scrollNow
 				jmp smoothScrollLoop
 				
-welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
+welcome			dc.b	147,18,31,"----A---F---L--- 00000",146,0
 startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
 				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
 continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 29, 29, 29, 18, "   BEGINNING    ",0
-
+				
 welcometerminator 	dc 0
 
 joystickDDR1		equ		$9113
@@ -33,19 +33,19 @@ screenMemoryPage	equ		648 ; screen memory page for operating system
 CHROUT				equ 	$ffd2 ; ROM routine
 screenstart 		equ		$1000 ; $1e00 for unexpanded VIC, $1000 for expanded
 screenstarthigh		equ 	$10 ; $1e for unexpanded VIC, $10 for expanded
+colorstart			equ		$9400
 colorstarthigh		equ		$94 ; $94 for expanded VIC, $96 for unexpanded VIC
 screenwidth			equ		22
 screenheight		equ		23
 fuelIncreaseAmount 	equ 	10
-shipimpulse			equ		80
-gravity				equ		3	
+shipimpulse			equ		100
+gravity				equ		5	
 keypress			equ		197 ; zero page location
 keyspace			equ		32
 nokey				equ		64
-spacePrintable		equ 	32
 charDefinitionPointer	equ 36869	
 nextLineLength		equ		22 ; 22 positions in all
-							
+numberOfBonusTypes	equ 	3							
 
 ; zero page variables
 shipy			equ		254
@@ -59,8 +59,6 @@ lastkey			equ		179
 fuel			equ 	178
 shipdx			equ		177
 shipMinorX		equ		176
-;scoreHi			equ 	177
-;scoreLo			equ		176
 shipx			equ		171
 shipDirection	equ		170
 fuelSoundCount	equ     169
@@ -93,11 +91,27 @@ lastFrameWasScroll	equ 43
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
-flags			dc 0 ; bit 0: decrease fuel if set
+flags			dc 0 ;	bits to show which bonuses set values are:
+bonusAirBrake			equ		1
+bonusDirectionFlip		equ		2
+bonusLaser				equ		4
+bonusForever			equ		128
+
+; information about bonuses
+; AMOUNT	DESCRIPTION		Fuel decrease amount when used
+;	10		Airbrakes		10
+;	30		Motion flip		5
+;	50		Laser			3
+;	255		Bonuses forever	0
+
+bonuses			dc.b	10, 10,
+				dc.b	30, 5,
+				dc.b	50, 3,
+				dc.b	255, 0
+				
 delayReduction	dc 0	; amount to reduce delay by. Increased by level wrap-around
 minDelayAmount	equ	5
 delayReductionPerWraparound	equ 10 ; amount to reduce delay by each time all levels are completed
-
 
 .outOfFuel
 				jmp restart
@@ -132,15 +146,12 @@ collision subroutine
 				sta fuelSoundCount
 				lda #fuelIncreaseAmount
 				jsr increaseFuel
-				jsr increaseFuel
 .finishedNotFatal
 				lda #0 ; set zero flag to indicate non-fatal
 				rts
 			
 endGame		
 				; End of game
-				lda #7 ; yellow
-				sta explosionColor
 				jsr explode
 				jsr stopSound
 				jmp restart
@@ -248,53 +259,39 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				jsr increaseScoreAndProgress
 				lda #1 ; clear zero flag
 				rts
-								
+				
+updateBonuses	subroutine
+				; update the fuel and bonus indicator
+				ldx fuel  
+				beq .zero
+				cpx #16
+				bmi .gotValue
+				ldx #16 ; max value printable		
+.gotValue
+				lda #4
+				sta colorstart,x
+				lda #1
+.loop
+				dex
+.zero
+				sta colorstart,x
+				cpx #0
+				bne .loop
+				rts
+						
 increaseFuel	subroutine		
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
 
 				lda #255
 				cmp fuel
-				beq .doneIncrease	
+				beq .doneIncrease		; already full
+
 				inc fuel
-				lda #58  + 128; '9' + 1	
-.digitLoop	
-				inc screenstart,x
-				cmp screenstart,x
-				bne .doneIncrease
-				lda #48 + 128 ; '0'
-				sta screenstart,x
-				lda #58  + 128; '9' + 1
-				dex
-				cpx #5
-				bne .digitLoop				
-.doneIncrease		
+.doneIncrease
+				jsr updateBonuses
 				rts
 
-decreaseFuel 	subroutine
-				; draw fuel on screen
-				ldx #8 ; digit number 3, plus "SCORE" text
-				
-				lda fuel
-				cmp #0
-				bne .notEmpty
-				rts		
-.notEmpty
-				lda #48  + 128 - 1; '0' - 1
-.digitloop
-				dec screenstart,x
-				cmp screenstart,x
-				bne .done
-				lda #57 + 128 ; '9'
-				sta screenstart,x
-				lda #48 + 128 - 1 ; '0'
-				dex
-				cpx #5
-				bne .digitloop				
-.done				
-				dec fuel
-				rts
-					
 ; Increase score by one and update the onscreen counter
 increaseScoreAndProgress	subroutine
 				; now decrease progress counter. If reached zero, move to next level before returning
@@ -321,7 +318,7 @@ increaseScore
 				
 				; increase the digits on screen
 				lda #58  + 128; '9' + 1
-				ldx #20 ; position of score digits from the start of screen memory
+				ldx #21 ; position of score digits from the start of screen memory
 increaseDigits
 				inc screenstart,x
 				cmp screenstart,x
@@ -330,19 +327,19 @@ increaseDigits
 				sta screenstart,x
 				lda #58  + 128; '9' + 1
 				dex
-				cpx #20 - 5 ; reached the last digit?
+				cpx #21 - 5 ; reached the last digit?
 				bne increaseDigits				
 .doneIncreaseDigits			
 				rts
 			
 increaseScoreBy10
 				lda #58 + 128
-				ldx #19
+				ldx #20
 				jmp increaseDigits
 
 increaseScoreBy100
 				lda #58 + 128
-				ldx #18
+				ldx #19
 				jmp increaseDigits
 				
 increaseLevel	subroutine
@@ -360,6 +357,7 @@ increaseLevel	subroutine
 .doneIncrease
 				stx levelNumber
 				jsr setUpLevel
+				jsr updateBonuses
 				rts
 				
 onceOnlyInit	subroutine
@@ -424,7 +422,7 @@ init			subroutine
 				sta shipdy
 				sta towerheight
 				
-				lda #128 ; start with half full fuel
+				lda #0 ; start with no fuel
 				sta fuel
 				
 				lda #8
@@ -1038,10 +1036,6 @@ clearship		lda #spacePrintable
 				jmp drawshipchar
 									
 control			subroutine				
-				lda fuel	; if fuel is exhausted, no control is possible
-				bne .notEmpty
-				rts
-.notEmpty
 				; scan keyboard for key presses or joystick
 				lda #0
 				sta $9120 ; reset keyboard state
@@ -1066,7 +1060,7 @@ thrust
 				lda #shipimpulse
 				sta shipdy
 				clc
-				lda #80
+				lda #30
 				adc shipdx
 				bcc .storedx
 				lda #255
@@ -1080,7 +1074,6 @@ thrust
 				sta shipDirection	
 				jsr swapMinorY
 .alreadyGoingUp
-				jsr decreaseFuel
 .notpress		
 				rts
 			
@@ -1127,12 +1120,14 @@ physics			subroutine
 				lda physicsCountdownInitialValue ; reset countdown timer
 				sta physicsCountdown
 			
-				; update ship x position
-				ldy #2 ; amount to reduce by
-				lda shipdx
+				; update ship x speed
+				ldy #1 ; amount to reduce by
+				ldx shipdx
 .dxloop
+				cpx #0
 				beq .donedx
-				dec shipdx
+				dex
+				stx shipdx
 				dey
 				bne .dxloop								
 .donedx
@@ -1147,7 +1142,18 @@ physics			subroutine
 				lda shipy
 				clc
 				adc shipDirection
+
+				; check if hit top of screen, in whic case we bounce
+				cmp #1
+				bpl .doneBounce
+				lda #directionDown
+				sta shipDirection
+				
+				lda #1
+				sta shipMinorY
+.doneBounce
 				sta shipy
+				
 .doneShipPosition			
 				; update ship velocity
 				; are we currently going up or down?
@@ -1249,13 +1255,6 @@ stopSound
 				rts
 				
 updateSound subroutine
-;				ldx #0
-;				lda jetSound
-;				cmp #230
-;				bmi .makeSound ; don't set to make a sound, just use 0 (sound off)
-;				and #3
-;				beq .makeSound
-;				ldx jetSound
 				ldx shipdx
 .makeSound
 				stx voice3
@@ -1297,19 +1296,6 @@ powerUp			subroutine
 				
 effectCount		dc.b 0
 
-
-; don't need to be in zero page as only used during explosion, which isn't time critical
-explodeCountLo		dc 0
-explosionSize		dc 0
-explosionLeftEdge	dc 0
-explosionRightEdge	dc 0
-explosionTopEdge	dc 0
-explosionBottomEdge	dc 0
-
-explosionX			dc 0
-explosionY			dc 0
-explosionColor		dc 165
-
 screenWidth			equ 23
 screenHeight		equ 24
 
@@ -1317,12 +1303,6 @@ explode subroutine
 				rts
 
 startScreen     subroutine
-				lda #6 ; blue
-				sta explosionColor
-				jsr explode
-				lda #1
-				sta explosionColor
-				jsr explode
 				jsr stopSound
 				
 				; clear screen and display score
@@ -1372,8 +1352,9 @@ waitForStartKey subroutine
 				lda #0
 				sta shipMinorX
 				
-				lda #200
+				lda #100
 				sta shipdx
+				
 				rts
 
 ; level format:
@@ -1390,24 +1371,22 @@ waitForStartKey subroutine
 
 ;       21   : physics countdown timer initial value
 ;       22   : frames between scroll
-;		23   : flags
-;		24	 ; background map number
+;		23	 ; background map number
 
 fuelActiveFlag	equ #1
-space	equ spacePrintable
 
 ; specify the order of levels. 255 instructs to wrap around
 finishedLevels	equ	255
 levelOrder	dc.b	1,2,0,3,0,4,0,0,5,6,finishedLevels
 
 startOfLevelDefinitions
-spaceLevel				dc.b	space,space,space,space
-						dc.b	space,space,starRightPrintable,starLeftPrintable
-						dc.b	space,space,space,space
-						dc.b	starRightPrintable,starLeftPrintable,space,space
+spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	spacePrintable,spacePrintable,starRightPrintable,starLeftPrintable
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
 						dc.b	1,14,8 ; black border, black paper
 						dc.b	150,1
-						dc.b	1, 1, 1, 1
+						dc.b	1, 1, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
@@ -1415,31 +1394,31 @@ towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,b
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,2
 						dc.b	1,2 
-						dc.b	1, 1, 0, 0
+						dc.b	1, 1, 0
 											
-towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
+towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,0
 						dc.b	1,2 
-						dc.b	1,1, 0, 0
+						dc.b	1,1, 0
 						
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,7,0
 						dc.b	150,1 
-						dc.b	1, 1, 0, 0
+						dc.b	1, 1, 0
 						
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	5,20,0
 						dc.b	150,1 
-						dc.b	1 ,1, 0, 0
+						dc.b	1 ,1, 0
 						
 maxLevel				equ 	7
 
@@ -1465,7 +1444,7 @@ setupTowerCharacters	subroutine
 				tax
 				; x now holds the number of the level description					
 .xloop
-				lda #25 ; number of positions to skip over to get next set of characters
+				lda #24 ; number of positions to skip over to get next set of characters
 				cpx #0 ; use this character set?
 				beq .useThis
 				jsr addcursor
@@ -1506,9 +1485,6 @@ setupTowerCharacters	subroutine
 				sta delayAmount
 				
 				jsr .getNext
-				sta flags
-				
-				jsr .getNext
 				tax
 				jsr prepareColors
 				rts
@@ -1547,27 +1523,35 @@ programEnd
 startOfChars
 scrollable		
 				; first the scrollable characters. All the left hand edges, then right hand
-				; striped block, scrollable
 leftEdges
 
 solidLeftChar	dc.b	0,0,0,0,0,0,0,0
 towerLeftChar	dc.b	0,0,0,0,0,0,0,0
-fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
 starLeftChar	dc.b	0,0,0,0,0,0,0,0
 blackLeftChar	dc.b	0,0,0,0,0,0,0,0
+; bonus characters
+fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
+bonus1LeftChar	dc.b	0,0,0,0,0,0,0,0
+bonus2LeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
 solidRightChar	dc.b	255,255,0,255,255,0,255,255
 towerRightChar	dc.b	145,137,197,163,145,137,197,163
-fuelRightChar	dc.b	126,66,223,199,223,223,94,126
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 blackRightChar	dc.b	255,255,255,255,255,255,255,255
+fuelRightChar	dc.b	126,66,223,199,223,223,94,126
+bonus1RightChar	dc.b	255,66,223,199,223,223,94,126
+bonus2RightChar	dc.b	126,255,223,199,223,223,94,126
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
 fuelLeftPrintable equ (fuelLeftChar - startOfChars) / 8
 fuelRightPrintable equ (fuelRightChar - startOfChars) / 8
+bonus1LeftPrintable equ (bonus1LeftChar - startOfChars) / 8
+bonus1RightPrintable equ (bonus1RightChar - startOfChars) / 8
+bonus2LeftPrintable equ (bonus1LeftChar - startOfChars) / 8
+bonus2RightPrintable equ (bonus1RightChar - startOfChars) / 8
 towerLeftPrintable equ (towerLeftChar - startOfChars) / 8
 towerRightPrintable equ (towerRightChar - startOfChars) / 8
 solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
@@ -1593,10 +1577,19 @@ numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 				; now the single character rotational scrolling blocks
 				; wavy block at bottom of screen
 bottomBlockChar	dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
+jetSpotChar		dc.b	0, 0, 0, 1, 0, 0, 0, 0
+
 bottomBlockPrintable equ (bottomBlockChar - startOfChars) / 8
+jetSpotPrintable equ (jetSpotChar - startOfChars) / 8
 
 endOfScenery
 
+		; now for the space
+		org startOfChars + 32  *8
+		
+spaceChar		dc.b	0, 0, 0, 0, 0, 0, 0, 0
+spacePrintable equ (spaceChar - startOfChars) / 8	
+		
 				; now for the pre-computed space ship characters, first the top half, then the bottom half
 shipBottomPrintable	equ	(shipBottom - startOfChars / 8)
 shipTopPrintable	equ (shipTop - startOfChars) / 8
@@ -1622,12 +1615,11 @@ shipBottom
 				dc.b	128+64+32+16+8+4, 255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0, 0
 				dc.b	128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0
 enfOfChars
-				dc.b	1,2,4,8,16,32,64,128
 				
-				org	startOfChars + 32 * 8
-				dc.b	0,0,0,0,0,0,0,0 ; define the space character
+		;		org	startOfChars + 32 * 8
+		;		dc.b	0,0,0,0,0,0,0,0 ; define the space character
 				
-				org	startOfChars + 33 * 8
+		;		org	startOfChars + 33 * 8
 				
 ; background map format is:
 ; starts in backbround mode (i.e. space)
@@ -1651,33 +1643,21 @@ backgroundMap
 				dc 253 ; end
 ; map 1
 				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 1, 255, 2, 22, 22,
-				dc	254, 7, 255, 1, 22, 22,
-				dc	254, 4, 255, 7, 22, 22,
-				dc	254, 2, 255, 1, 22, 22,
-				dc	254, 7, 255, 4, 22, 22,
-				dc	254, 1, 255, 1, 22, 22,
-				dc	254, 4, 255, 2, 22, 22,
-				dc	254, 1, 255, 4, 22, 22,
-				dc	254, 7, 255, 1, 22, 22,
-				dc	254, 2, 255, 7, 22, 22,
+				dc	254, 1, 255, 2, 44, 44,
+				dc	254, 7, 255, 1, 44, 44,
+				dc	254, 4, 255, 7, 44, 44,
+				dc	254, 2, 255, 1, 44, 44,
+				dc	254, 7, 255, 4, 44, 44
+				dc 253 ; end
 
-				dc 253 ; end
-; map 2
-				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 2, 255, 4 ; change colours to clouds
-				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
-				dc 	255, 5 ; change colour to buildings
-				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
-				dc 	255, 1 ; change colour to grass
-				dc	110
-				dc 253 ; end
 dataEnd
 				dc.b	0
 
 				echo "To run: SYS ", start
 				echo "Total length ", dataEnd - start
-				echo "Space left ", 7168 - programEnd
+				echo "Code space left ", 7168 - programEnd
+				echo "Characters left ", (spaceChar - endOfScenery) / 8
+				
 
 
 					
