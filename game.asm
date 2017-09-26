@@ -20,6 +20,9 @@ continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 2
 				
 welcometerminator 	dc 0
 
+enabled				equ		1
+disabled			equ		4
+
 joystickDDR1		equ		$9113
 joystickDDR2		equ		$9122
 joystickIn1			equ		$9111
@@ -92,23 +95,12 @@ lastFrameWasScroll	equ 43
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
 flags			dc 0 ;	bits to show which bonuses set values are:
-bonusAirBrake			equ		1
-bonusDirectionFlip		equ		2
-bonusLaser				equ		4
-bonusForever			equ		128
 
-; information about bonuses
-; AMOUNT	DESCRIPTION		Fuel decrease amount when used
-;	10		Airbrakes		10
-;	30		Motion flip		5
-;	50		Laser			3
-;	255		Bonuses forever	0
+; Bonus poritions on the screen for the indicator (number of characters from top left of screen)
+bonusAirBrake			equ		4
+bonusFlip				equ		8
+bonusLaser				equ		12
 
-bonuses			dc.b	10, 10,
-				dc.b	30, 5,
-				dc.b	50, 3,
-				dc.b	255, 0
-				
 delayReduction	dc 0	; amount to reduce delay by. Increased by level wrap-around
 minDelayAmount	equ	5
 delayReductionPerWraparound	equ 10 ; amount to reduce delay by each time all levels are completed
@@ -263,14 +255,15 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 updateBonuses	subroutine
 				; update the fuel and bonus indicator
 				ldx fuel  
+				cpx #0
 				beq .zero
 				cpx #16
 				bmi .gotValue
 				ldx #16 ; max value printable		
 .gotValue
-				lda #4
+				lda #disabled
 				sta colorstart,x
-				lda #1
+				lda #enabled
 .loop
 				dex
 .zero
@@ -278,8 +271,15 @@ updateBonuses	subroutine
 				cpx #0
 				bne .loop
 				rts
-						
-increaseFuel	subroutine		
+					
+decreaseFuel	subroutine
+				lda #0
+				cmp fuel
+				beq .doneIncrease2
+				dec fuel
+				jmp .doneIncrease
+				
+increaseFuel
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
 
@@ -290,6 +290,7 @@ increaseFuel	subroutine
 				inc fuel
 .doneIncrease
 				jsr updateBonuses
+.doneIncrease2
 				rts
 
 ; Increase score by one and update the onscreen counter
@@ -1040,20 +1041,74 @@ control			subroutine
 				lda #0
 				sta $9120 ; reset keyboard state
 
-				lda joystickIn1
-				ora #255 - 32 ; set all other bits. Only care about fire button
-				and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
-								
+	;			lda joystickIn1
+	;			ora #255 - 32 ; set all other bits. Only care about fire button
+	;			and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
+				lda $9121
+											
 				ldx lastkey
 				sta lastkey
 
 				cpx #255 ; 255 indicates nothing is pressed
 				bne .notpress 
+				
 				cmp #255
 				beq .notpress
 				
-				; space just pressed
-				; apply an impulse
+				; something just pressed
+				; what?
+				cmp #254 ; space
+				beq thrust
+				
+				cmp #253 ; a
+				beq airbrake
+				
+				cmp #251 ; f
+				beq flip
+				
+				cmp #223 ; l
+				beq laser
+				 
+				; ignore
+				rts
+
+airbrake
+				; enabled?
+				lda fuel
+				cmp #bonusAirBrake + 1
+				bmi controlDone
+				lda #60
+				sta shipdx
+				
+				jsr bonusSound1
+				jsr decreaseFuel
+				rts
+flip
+				; enabled?
+				lda fuel
+				cmp #bonusFlip + 1
+				bmi controlDone
+				jsr bonusSound1
+				jsr decreaseFuel
+				
+				lda #150
+				sta shipdy
+				
+				lda shipDirection
+				cmp #directionDown
+				beq .flip1
+				
+				lda #directionDown
+				sta shipDirection
+				rts
+.flip1
+				lda #directionUp
+				sta shipDirection
+				rts				
+laser
+				; not implemented
+				rts		
+						
 thrust			
 				lda #255
 				sta jetSound
@@ -1074,7 +1129,8 @@ thrust
 				sta shipDirection	
 				jsr swapMinorY
 .alreadyGoingUp
-.notpress		
+.notpress	
+controlDone	
 				rts
 			
 physics			subroutine
@@ -1288,7 +1344,14 @@ updateSound subroutine
 .doneEffect
 				stx	voice1
 				rts
-				
+		
+bonusSound1		subroutine
+				lda #200
+				sta fuelSoundCount
+				lda #40
+				sta effectCount
+				rts
+						
 powerUp			subroutine
 				lda #100
 				sta effectCount
