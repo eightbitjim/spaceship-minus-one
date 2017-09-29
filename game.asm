@@ -49,6 +49,7 @@ nokey				equ		64
 charDefinitionPointer	equ 36869	
 nextLineLength		equ		22 ; 22 positions in all
 numberOfBonusTypes	equ 	3							
+amountToIncreaseSpeedBy	equ	20
 
 ; zero page variables
 shipy			equ		254
@@ -73,8 +74,8 @@ towerTopCharacter	equ 150
 towerMiddleCharacter equ	147
 distanceBetweenTowers	equ	146
 gapWidth		equ		143
-physicsCountdown	equ	142
-physicsCountdownInitialValue equ 141
+minShipDx		equ		142
+;physicsCountdownInitialValue equ 141
 progressCounterLo	equ 140
 progressCounterHi	equ 139
 topTowerEdgeCharacter	equ 138
@@ -100,10 +101,6 @@ flags			dc 0 ;	bits to show which bonuses set values are:
 bonusAirBrake			equ		4
 bonusFlip				equ		8
 bonusLaser				equ		12
-
-delayReduction	dc 0	; amount to reduce delay by. Increased by level wrap-around
-minDelayAmount	equ	5
-delayReductionPerWraparound	equ 10 ; amount to reduce delay by each time all levels are completed
 
 .outOfFuel
 				jmp restart
@@ -351,10 +348,10 @@ increaseLevel	subroutine
 				bne .doneIncrease
 				ldx #0 ; back to first level, but increase speed
 				; Increase speed
-				lda delayReduction
+				lda minShipDx
 				clc
-				adc #delayReductionPerWraparound
-				sta delayReduction
+				adc	#amountToIncreaseSpeedBy
+				sta minShipDx
 .doneIncrease
 				stx levelNumber
 				jsr setUpLevel
@@ -394,9 +391,6 @@ onceOnlyInit	subroutine
 				lda #0
 				sta levelNumber
 				sta joystickDDR1	; prepare for joystick input
-				
-				lda #10
-				sta delayReduction
 				
 				jsr prepareTowerPositions
 				rts
@@ -443,10 +437,7 @@ init			subroutine
 setUpLevel
 				ldx levelNumber
 				jsr setupTowerCharacters ; also sets up constants
-					
-				lda physicsCountdownInitialValue
-				sta physicsCountdown	
-				
+									
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
 				
@@ -745,7 +736,7 @@ drawtower
 				;; if the screen
 				sta character
 				ldy towerheight
-				cpy #2 ; One high, so print the top character instead of the middle
+				cpy #3 ; One high, so print the top character instead of the middle
 				bmi .shortTower
 .draw
 				;; draw first block at bottom right, then build up from there
@@ -930,20 +921,7 @@ random			subroutine
 				inc randseed
 				sta randseed
 				rts
-				
-delaycount		dc 0 ; doesn't need to be in zero page, as used to cause a delay anyway
-delayAmount		dc $30
-
-delay			ldx delayAmount
-				stx delaycount
-.1				dex
-				bne .1
-				ldx delaycount
-				dex
-				stx delaycount
-				bne .1
-				rts
-				
+								
 				; wait for raster to enter border
 rasterdelay
 		;		lda #3
@@ -1133,56 +1111,38 @@ thrust
 controlDone	
 				rts
 			
+temp			dc.b	0
+
 physics			subroutine
-				; update horizontal position 2 times
+				; update horizontal position
+				lda #4	; number of times to add the speed
+				sta	temp
+.impulseLoop
 				lda shipMinorX
 				clc
 				adc shipdx
 				sta shipMinorX
-				bcc .notSmoothScroll1
+				bcc .notSmoothScroll
 				jsr smoothScroll
-				jsr handleFullScroll
+				jsr handleFullScroll				
+.notSmoothScroll
+				dec	temp
+				bne	.impulseLoop
 				
-.notSmoothScroll1
-				lda shipMinorX
-				clc
-				adc shipdx
-				sta shipMinorX
-				bcc .notSmoothScroll2
-				jsr smoothScroll
-				jsr handleFullScroll
-.notSmoothScroll2
-				lda shipMinorX
-				clc
-				adc shipdx
-				sta shipMinorX
-				bcc .notSmoothScroll3
-				jsr smoothScroll
-				jsr handleFullScroll
-.notSmoothScroll3
-				lda shipMinorX
-				clc
-				adc shipdx
-				sta shipMinorX
-				bcc .notSmoothScroll4
-				jsr smoothScroll
-				jsr handleFullScroll
-.notSmoothScroll4
-				; is it time to update the rest of the physics
-				dec physicsCountdown
-				beq .timeToUpdate
-				rts
-.timeToUpdate
-				lda physicsCountdownInitialValue ; reset countdown timer
-				sta physicsCountdown
-			
 				; update ship x speed
 				ldy #1 ; amount to reduce by
 				ldx shipdx
 .dxloop
-				cpx #0
+				cpx minShipDx
 				beq .donedx
+				
+				; speed up or slow down?
+				inx
+				cpx minShipDx
+				bpl .doneDecrease
 				dex
+				dex
+.doneDecrease
 				stx shipdx
 				dey
 				bne .dxloop								
@@ -1409,8 +1369,6 @@ waitForStartKey subroutine
 .restart
 				lda #0
 				sta levelNumber ; reset level to start
-				lda #10
-				sta delayReduction
 .done
 				lda #0
 				sta shipMinorX
@@ -1432,9 +1390,9 @@ waitForStartKey subroutine
 
 ;       19-20: number of moves before switching to next level (lo,hi)
 
-;       21   : physics countdown timer initial value
-;       22   : frames between scroll
-;		23	 ; background map number
+;		21	 ; minimum horizontal speed
+;		22	 ; background map number
+
 
 fuelActiveFlag	equ #1
 
@@ -1449,7 +1407,7 @@ spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
 						dc.b	1,14,8 ; black border, black paper
 						dc.b	150,1
-						dc.b	1, 1, 1
+						dc.b	128, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
@@ -1457,7 +1415,7 @@ towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,b
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,2
 						dc.b	1,2 
-						dc.b	1, 1, 0
+						dc.b	10, 0
 											
 towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1465,7 +1423,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,0
 						dc.b	1,2 
-						dc.b	1,1, 0
+						dc.b	10, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1473,7 +1431,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,7,0
 						dc.b	150,1 
-						dc.b	1, 1, 0
+						dc.b	10, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1481,7 +1439,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	5,20,0
 						dc.b	150,1 
-						dc.b	1 ,1, 0
+						dc.b	10, 0
 						
 maxLevel				equ 	7
 
@@ -1507,7 +1465,7 @@ setupTowerCharacters	subroutine
 				tax
 				; x now holds the number of the level description					
 .xloop
-				lda #24 ; number of positions to skip over to get next set of characters
+				lda #23 ; number of positions to skip over to get next set of characters
 				cpx #0 ; use this character set?
 				beq .useThis
 				jsr addcursor
@@ -1542,14 +1500,12 @@ setupTowerCharacters	subroutine
 				sta progressCounterHi
 				
 				jsr .getNext
-				sta physicsCountdownInitialValue
-				
-				jsr .getNext
-				sta delayAmount
-				
+				sta minShipDx
+							
 				jsr .getNext
 				tax
 				jsr prepareColors
+								
 				rts
 
 .getNext		lda (cursor),y
