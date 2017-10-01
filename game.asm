@@ -16,7 +16,6 @@ restart
 welcome			dc.b	147,18,31,">>>>>>>>>>>>>>>> 00000",146,0
 startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
 				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
-continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 29, 29, 29, 18, "   BEGINNING    ",0
 				
 welcometerminator 	dc 0
 
@@ -48,7 +47,7 @@ keyspace			equ		32
 nokey				equ		64
 charDefinitionPointer	equ 36869	
 nextLineLength		equ		22 ; 22 positions in all
-numberOfBonusTypes	equ 	3							
+						
 amountToIncreaseSpeedBy	equ	20
 
 ; zero page variables
@@ -95,12 +94,7 @@ lastFrameWasScroll	equ 43
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
-flags			dc 0 ;	bits to show which bonuses set values are:
-
-; Bonus poritions on the screen for the indicator (number of characters from top left of screen)
-bonusAirBrake			equ		4
-bonusFlip				equ		8
-bonusLaser				equ		12
+flags			dc 0 
 
 .outOfFuel
 				jmp restart
@@ -1065,55 +1059,9 @@ control			subroutine
 				; what?
 				cmp #254 ; space
 				beq thrust
-				
-				cmp #253 ; a
-				beq airbrake
-				
-				cmp #251 ; f
-				beq flip
-				
-				cmp #223 ; l
-				beq laser
-				 
+								 
 				; ignore
 				rts
-
-airbrake
-				; enabled?
-				lda fuel
-				cmp #bonusAirBrake + 1
-				bmi controlDone
-				lda #60
-				sta shipdx
-				
-				jsr bonusSound1
-				jsr decreaseFuel
-				rts
-flip
-				; enabled?
-				lda fuel
-				cmp #bonusFlip + 1
-				bmi controlDone
-				jsr bonusSound1
-				jsr decreaseFuel
-				
-				lda #150
-				sta shipdy
-				
-				lda shipDirection
-				cmp #directionDown
-				beq .flip1
-				
-				lda #directionDown
-				sta shipDirection
-				rts
-.flip1
-				lda #directionUp
-				sta shipDirection
-				rts				
-laser
-				; not implemented
-				rts		
 						
 thrust			
 				lda #255
@@ -1388,15 +1336,6 @@ startScreen     subroutine
 				sta.z cursor + 1
 				jsr printline
 				
-				; if we are beyond the first level, print the continue message
-				lda levelNumber
-				beq .notContinue
-				lda #<continueMessage
-				sta.z cursor;
-				lda #>continueMessage
-				sta.z cursor + 1
-				jsr printline
-.notContinue
 				jsr waitForStartKey
 				rts
 								
@@ -1407,22 +1346,18 @@ waitForStartKey subroutine
 				sta $9120 ; reset keyboard state
 				lda $9121
 								
-				cmp #247 ; b key
-				beq .restart
-
 				cmp #254 ; space key
-				beq .done
+				beq .restart
 				
 				lda joystickIn1
 				and #32 ; set all other bits. Only care about fire button
 				cmp #32								
 				beq waitForStartKey
-				jmp .done
+				jmp .restart
 				
 .restart
 				lda #0
 				sta levelNumber ; reset level to start
-.done
 				lda #0
 				sta shipMinorX
 				
@@ -1603,8 +1538,6 @@ starLeftChar	dc.b	0,0,0,0,0,0,0,0
 blackLeftChar	dc.b	0,0,0,0,0,0,0,0
 ; bonus characters
 fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
-bonus1LeftChar	dc.b	0,0,0,0,0,0,0,0
-bonus2LeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
@@ -1613,17 +1546,11 @@ towerRightChar	dc.b	145,137,197,163,145,137,197,163
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 blackRightChar	dc.b	255,255,255,255,255,255,255,255
 fuelRightChar	dc.b	126,66,223,199,223,223,94,126
-bonus1RightChar	dc.b	255,66,223,199,223,223,94,126
-bonus2RightChar	dc.b	126,255,223,199,223,223,94,126
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
 fuelLeftPrintable equ (fuelLeftChar - startOfChars) / 8
 fuelRightPrintable equ (fuelRightChar - startOfChars) / 8
-bonus1LeftPrintable equ (bonus1LeftChar - startOfChars) / 8
-bonus1RightPrintable equ (bonus1RightChar - startOfChars) / 8
-bonus2LeftPrintable equ (bonus1LeftChar - startOfChars) / 8
-bonus2RightPrintable equ (bonus1RightChar - startOfChars) / 8
 towerLeftPrintable equ (towerLeftChar - startOfChars) / 8
 towerRightPrintable equ (towerRightChar - startOfChars) / 8
 solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
