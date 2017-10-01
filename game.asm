@@ -189,6 +189,7 @@ smoothScrollLoop
 				sta lastFrameWasScroll
 				jmp dontdrawship
 .normal
+				jsr clearship
 				jsr workOutShipPosition
 				jsr drawship
 dontdrawship
@@ -211,13 +212,14 @@ dontdrawship
 				jsr control		
 				jsr updateSound
 				jsr rasterdelay
-				jsr clearship
+		;		jsr clearship
 				jsr physics		
 				beq endGame
 				
 				jmp smoothScrollLoop
 				
 scrollNow
+				jsr clearship
 				jsr workOutShipPosition
 				jsr scroll
 				jsr updatePeriodic
@@ -273,14 +275,66 @@ smoothScroll	subroutine
 				rts
 				
 handleFullScroll
-				lda #5
-				cmp scrollCounter
+				lda scrollCounter
+				cmp #5 
 				beq prepareLine
+				cmp #6
+				beq updateFrame
 donePrepareLine
 				dec scrollCounter				
 				beq	scrollNow 
 				rts
+
+updateFrame		subroutine
+				; update positions of characters. Happens out of phase with full character scrolling
+				lda #screenHeight - 4
+				sta temp2
 				
+				ldx #screenstarthigh	; put start of screen hi in cursor position
+				ldy #22 					; screen scroll start lo
+				stx.z colorcursor + 1
+				sty.z colorcursor
+				ldy #0			; current offset from cursor
+				ldx	#0			; x position				
+.loop
+				lda (colorcursor),y			
+				cmp #explodePrintable
+				beq .explosion
+.doneChange
+				inc colorcursor
+				beq .pageJump
+.donePageJump
+				inx
+				cpx #22
+				beq .resetx
+.doneResetX
+				jmp .loop		
+.done
+				jmp donePrepareLine
+.resetx
+				ldx #0
+				dec temp2
+				beq .done ; end of screen?
+				jmp .loop
+.pageJump
+				inc colorcursor + 1
+				jmp .donePageJump
+.explosion
+				jsr random
+				and #3
+				beq .explosionPropogate
+				jmp .doneChange
+.explosionPropogate
+				cpx #0
+				beq .doneChange
+				lda #spacePrintable
+				sta (colorcursor),y
+				ldy #23
+				lda #explodePrintable
+				sta (colorcursor),y
+				ldy #0
+				jmp .doneChange
+																		
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				jsr increaseScoreAndProgress
 				lda #1 ; clear zero flag
@@ -607,7 +661,7 @@ printline		subroutine
 				jmp .loop
 .done 
 				rts
-
+				
 scroll			subroutine
 				; not yet drawn ship. Indicate this by setting the replacedChar with 255 (invalid value it will never encounter)
 				lda #255
@@ -962,15 +1016,15 @@ random			subroutine
 								
 				; wait for raster to enter border
 rasterdelay
-		;		lda #3
-		;		sta borderPaper
+;				lda #3
+;				sta borderPaper
 .rasterloop
 				lda rasterline
 				cmp #131 ; TODO: different value for NTSC, probably lower
 				bpl .rasterloop
 				
-		;		lda #0
-		;		sta borderPaper
+;				lda #0
+;				sta borderPaper
 				
 .rasterLowerLoop
 
@@ -978,8 +1032,8 @@ rasterdelay
 				cmp #130 ;130; TODO: different value for NTSC, probably lower
 				bmi .rasterloop
 
-		;		lda #1
-		;		sta borderPaper
+;				lda #1
+;				sta borderPaper
 
 				rts
 
@@ -1108,6 +1162,7 @@ controlDone
 				rts
 			
 temp			dc.b	0
+temp2			dc.b	0
 
 physics			subroutine
 				; returns with zero flag set if end of game
@@ -1308,6 +1363,8 @@ updateSound subroutine
 				sta verticalScreenPosition
 				
 				jsr random
+				ora #128 ; set top bit so will actually make a sound
+				sta voice2
 				tax
 				and #1
 				clc
