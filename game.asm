@@ -99,7 +99,9 @@ lastFrameWasScroll	equ 43
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
-flags			dc 0 
+flags			dc 0 ; bit 0 indicates ship is crashing
+
+crashing	equ 1
 
 .outOfFuel
 				jmp restart
@@ -139,6 +141,13 @@ collision 		subroutine
 				dec fuel
 				lda fuel
 				cmp #255 ; wrapped around, i.e. no fuel left
+				bne .explosionDone
+				lda flags
+				ora #crashing
+				sta flags
+				lda #0
+				sta fuel
+.explosionDone
 				rts ; zero flag set, indicates fatal
 .collectFuelLeft
 				lda #spacePrintable
@@ -187,7 +196,7 @@ dontdrawship
 				cmp #spacePrintable
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
-				beq endGame
+		;		beq endGame
 .doneCollision1
 				lda charReplaced2
 				cmp #spacePrintable
@@ -197,14 +206,15 @@ dontdrawship
 				jsr subcursor
 				lda charReplaced2
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
-				beq endGame
+		;		beq endGame
 .doneCollision2
 				jsr control		
 				jsr updateSound
 				jsr rasterdelay
 				jsr clearship
 				jsr physics		
-
+				beq endGame
+				
 				jmp smoothScrollLoop
 				
 scrollNow
@@ -446,6 +456,7 @@ init			subroutine
 				
 				lda #0 ; start with no fuel
 				sta fuel
+				sta flags
 				
 				lda #8
 				sta scrollCounter
@@ -1042,6 +1053,10 @@ clearship		lda #spacePrintable
 				jmp drawshipchar
 									
 control			subroutine				
+				; if crashing, no control
+				lda flags
+				and #crashing
+				bne .controlDone
 				; scan keyboard for key presses or joystick
 				lda #0
 				sta $9120 ; reset keyboard state
@@ -1064,7 +1079,7 @@ control			subroutine
 				; what?
 				cmp #254 ; space
 				beq thrust
-								 
+.controlDone		 
 				; ignore
 				rts
 						
@@ -1095,6 +1110,8 @@ controlDone
 temp			dc.b	0
 
 physics			subroutine
+				; returns with zero flag set if end of game
+
 				; update horizontal position
 				lda #4	; number of times to add the speed
 				sta	temp
@@ -1152,6 +1169,11 @@ physics			subroutine
 .notTopBounce
 				cmp #20 ; hit bottom of screen?
 				bmi .doneBounce
+				
+				; if we are crashing, now it's the end of the game
+				lda flags
+				and #crashing
+				bne donePhysicsEndOfGame			
 				lda #directionUp
 				sta shipDirection
 				
@@ -1178,7 +1200,7 @@ physics			subroutine
 				adc #gravity
 				sta shipdy
 .maxVelocity
-				rts
+				jmp donePhysicsNotEndOfGame	
 .goingUp
 				lda jetSound
 				cmp #0
@@ -1191,7 +1213,7 @@ physics			subroutine
 				sbc #gravity
 				bcc .switchToDown
 				sta shipdy
-				rts					
+				jmp donePhysicsNotEndOfGame						
 .switchToDown
 				lda #0
 				sta shipdy
@@ -1205,8 +1227,16 @@ swapMinorY
 				sec
 				sbc shipMinorY
 				sta shipMinorY
-				rts		
-							
+				jmp donePhysicsNotEndOfGame	
+donePhysicsNotEndOfGame
+				lda #0 ; clear zero flag to indicate not end of game
+				cmp #1
+				rts
+donePhysicsEndOfGame
+				lda #0 ; set zero flag to indicate end of game
+				cmp #0
+				rts
+			
 ;;;; Graphics routines
 copyROMCharacters	subroutine
 				;;; First copy original character definitions in
@@ -1352,6 +1382,17 @@ screenWidth			equ 23
 screenHeight		equ 24
 
 explode subroutine
+				ldy #255
+				ldx #255				
+.loop
+				stx borderPaper
+				sty	voice2
+				sty voice1
+				sty voice0
+				dex
+				bne .loop
+				dey
+				bne .loop
 				rts
 
 startScreen     subroutine
