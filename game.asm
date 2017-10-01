@@ -27,6 +27,11 @@ joystickDDR2		equ		$9122
 joystickIn1			equ		$9111
 joystickIn2			equ		$9120
 
+horizontalScreenPosition	equ $9000 ; bottom 6 bits only
+verticalScreenPosition		equ $9001
+horizontalScreenDefaultPosition	equ	12
+verticalScreenDefaultPosition equ 36
+
 directionUp			equ		$ff
 directionDown		equ		$01
 rasterline			equ 	$9004
@@ -1263,7 +1268,30 @@ updateSound subroutine
 				cpx #0
 				beq .engineSound
 				dec explosionEffectCount
+				beq .restoreScreen
+				
+				; shake the screen
+				jsr random
+				and #7
+				clc
+				adc #verticalScreenDefaultPosition
+				sta verticalScreenPosition
+				
+				jsr random
+				tax
+				and #1
+				clc
+				adc #horizontalScreenDefaultPosition
+				sta horizontalScreenPosition
+				
 				jmp .makeSound
+.restoreScreen
+				lda #verticalScreenDefaultPosition
+				sta verticalScreenPosition
+				lda #horizontalScreenDefaultPosition
+				sta horizontalScreenPosition
+				jmp .engineSound
+								
 .engineSound
 				ldx shipdx
 .makeSound
@@ -1302,7 +1330,7 @@ updateSound subroutine
 explosionEffectCount	dc.b	0
 
 explosionEffect	subroutine
-				lda #255
+				lda #10
 				sta explosionEffectCount
 				rts
 				
