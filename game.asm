@@ -1470,7 +1470,7 @@ towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,b
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	8,24,2
+						dc.b	8,24,3
 						dc.b	1,2 
 						dc.b	10, 0
 											
@@ -1478,7 +1478,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	10,10,0
+						dc.b	10,10,3
 						dc.b	1,2 
 						dc.b	10, 0
 						
@@ -1486,7 +1486,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	28,7,0
+						dc.b	28,7,3
 						dc.b	150,1 
 						dc.b	15, 0
 						
@@ -1494,7 +1494,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	7,15,0
+						dc.b	7,15,3
 						dc.b	150,2 
 						dc.b	15, 0
 						
@@ -1634,8 +1634,6 @@ nonscrollable
 				; striped block, not scrollable
 solidChar		dc.b	255,255,0,255,255,0,255,255				
 solidPrintable equ (solidChar - startOfChars) / 8	
-explodeChar		dc.b	85, 170, 85, 170, 85, 170, 85, 170
-explodePrintable equ (explodeChar - startOfChars) / 8	
 blackChar		dc.b	255,255,255,255,255,255,255,255
 blackPrintable equ (blackChar - startOfChars) / 8	
 	
@@ -1646,9 +1644,11 @@ numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 				; wavy block at bottom of screen
 bottomBlockChar	dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
 jetSpotChar		dc.b	0, 0, 0, 1, 0, 0, 0, 0
+explodeChar		dc.b	88,91,1,45,185,231,0,233
 
 bottomBlockPrintable equ (bottomBlockChar - startOfChars) / 8
 jetSpotPrintable equ (jetSpotChar - startOfChars) / 8
+explodePrintable equ (explodeChar - startOfChars) / 8	
 
 endOfScenery
 
