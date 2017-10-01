@@ -13,17 +13,24 @@ restart
 				jsr scrollNow
 				jmp smoothScrollLoop
 				
-welcome			dc.b	147,18,31," FUEL 128       ",144,"000000",146,0
+welcome			dc.b	147,18,31,">>>>>>>>>>>>>>>> 00000",146,0
 startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
 				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
-continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 29, 29, 29, 18, "   BEGINNING    ",0
-
+				
 welcometerminator 	dc 0
+
+enabled				equ		1
+disabled			equ		4
 
 joystickDDR1		equ		$9113
 joystickDDR2		equ		$9122
 joystickIn1			equ		$9111
 joystickIn2			equ		$9120
+
+horizontalScreenPosition	equ $9000 ; bottom 6 bits only
+verticalScreenPosition		equ $9001
+horizontalScreenDefaultPosition	equ	12
+verticalScreenDefaultPosition equ 36
 
 directionUp			equ		$ff
 directionDown		equ		$01
@@ -33,19 +40,20 @@ screenMemoryPage	equ		648 ; screen memory page for operating system
 CHROUT				equ 	$ffd2 ; ROM routine
 screenstart 		equ		$1000 ; $1e00 for unexpanded VIC, $1000 for expanded
 screenstarthigh		equ 	$10 ; $1e for unexpanded VIC, $10 for expanded
+colorstart			equ		$9400
 colorstarthigh		equ		$94 ; $94 for expanded VIC, $96 for unexpanded VIC
 screenwidth			equ		22
 screenheight		equ		23
 fuelIncreaseAmount 	equ 	10
-shipimpulse			equ		80
-gravity				equ		3	
+shipimpulse			equ		100
+gravity				equ		5	
 keypress			equ		197 ; zero page location
 keyspace			equ		32
 nokey				equ		64
-spacePrintable		equ 	32
 charDefinitionPointer	equ 36869	
 nextLineLength		equ		22 ; 22 positions in all
-							
+						
+amountToIncreaseSpeedBy	equ	20
 
 ; zero page variables
 shipy			equ		254
@@ -59,8 +67,6 @@ lastkey			equ		179
 fuel			equ 	178
 shipdx			equ		177
 shipMinorX		equ		176
-;scoreHi			equ 	177
-;scoreLo			equ		176
 shipx			equ		171
 shipDirection	equ		170
 fuelSoundCount	equ     169
@@ -72,8 +78,8 @@ towerTopCharacter	equ 150
 towerMiddleCharacter equ	147
 distanceBetweenTowers	equ	146
 gapWidth		equ		143
-physicsCountdown	equ	142
-physicsCountdownInitialValue equ 141
+minShipDx		equ		142
+;physicsCountdownInitialValue equ 141
 progressCounterLo	equ 140
 progressCounterHi	equ 139
 topTowerEdgeCharacter	equ 138
@@ -93,23 +99,56 @@ lastFrameWasScroll	equ 43
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
-flags			dc 0 ; bit 0: decrease fuel if set
-delayReduction	dc 0	; amount to reduce delay by. Increased by level wrap-around
-minDelayAmount	equ	5
-delayReductionPerWraparound	equ 10 ; amount to reduce delay by each time all levels are completed
+flags			dc 0 ; bit 0 indicates ship is crashing
 
+crashing	equ 1
 
 .outOfFuel
 				jmp restart
 
-collision subroutine
+collision 		subroutine
 				; if end of game, return with zero flag not set
 				; what have we collided with?
 				cmp #fuelLeftPrintable
 				beq .collectFuelLeft
 				cmp #fuelRightPrintable
 				beq .collectFuelRight
-				rts ; zero flag not set, indicates fatal
+				
+				; explosion?
+				cmp #explodePrintable
+				beq .finishedNotFatal
+				
+				; collided with something. Draw an explosion
+				dec	shipToBeDrawnAt1
+				dec	shipToBeDrawnAt1
+				dec	shipToBeDrawnAt2
+				dec	shipToBeDrawnAt2
+				
+				lda #explodePrintable
+				ldy #5
+.explosionLoop
+				sta (shipToBeDrawnAt1),y
+				sta (shipToBeDrawnAt2),y
+				dey
+				bne .explosionLoop
+				
+				jsr explosionEffect
+				jsr updateBonuses
+				
+				lda #0
+				sta shipdy
+				
+				dec fuel
+				lda fuel
+				cmp #255 ; wrapped around, i.e. no fuel left
+				bne .explosionDone
+				lda flags
+				ora #crashing
+				sta flags
+				lda #0
+				sta fuel
+.explosionDone
+				rts ; zero flag set, indicates fatal
 .collectFuelLeft
 				lda #spacePrintable
 				ldy #1
@@ -132,15 +171,12 @@ collision subroutine
 				sta fuelSoundCount
 				lda #fuelIncreaseAmount
 				jsr increaseFuel
-				jsr increaseFuel
 .finishedNotFatal
-				lda #0 ; set zero flag to indicate non-fatal
+				lda #1 ; clear zero flag to indicate non-fatal
 				rts
 			
 endGame		
 				; End of game
-				lda #7 ; yellow
-				sta explosionColor
 				jsr explode
 				jsr stopSound
 				jmp restart
@@ -160,7 +196,7 @@ dontdrawship
 				cmp #spacePrintable
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
-				bne endGame
+		;		beq endGame
 .doneCollision1
 				lda charReplaced2
 				cmp #spacePrintable
@@ -170,14 +206,15 @@ dontdrawship
 				jsr subcursor
 				lda charReplaced2
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
-				bne endGame
+		;		beq endGame
 .doneCollision2
 				jsr control		
 				jsr updateSound
 				jsr rasterdelay
 				jsr clearship
 				jsr physics		
-
+				beq endGame
+				
 				jmp smoothScrollLoop
 				
 scrollNow
@@ -248,53 +285,48 @@ updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				jsr increaseScoreAndProgress
 				lda #1 ; clear zero flag
 				rts
-								
-increaseFuel	subroutine		
+				
+updateBonuses	subroutine
+				; update the fuel and bonus indicator
+				ldx fuel  
+				cpx #0
+				beq .zero
+				cpx #16
+				bmi .gotValue
+				ldx #16 ; max value printable		
+.gotValue
+				lda #disabled
+				sta colorstart,x
+				lda #enabled
+.loop
+				dex
+.zero
+				sta colorstart,x
+				cpx #0
+				bne .loop
+				rts
+					
+decreaseFuel	subroutine
+				lda #0
+				cmp fuel
+				beq .doneIncrease2
+				dec fuel
+				jmp .doneIncrease
+				
+increaseFuel
 				; draw fuel on screen
 				ldx #8 ; digit number 3, plus "SCORE" text
 
 				lda #255
 				cmp fuel
-				beq .doneIncrease	
+				beq .doneIncrease		; already full
+
 				inc fuel
-				lda #58  + 128; '9' + 1	
-.digitLoop	
-				inc screenstart,x
-				cmp screenstart,x
-				bne .doneIncrease
-				lda #48 + 128 ; '0'
-				sta screenstart,x
-				lda #58  + 128; '9' + 1
-				dex
-				cpx #5
-				bne .digitLoop				
-.doneIncrease		
+.doneIncrease
+				jsr updateBonuses
+.doneIncrease2
 				rts
 
-decreaseFuel 	subroutine
-				; draw fuel on screen
-				ldx #8 ; digit number 3, plus "SCORE" text
-				
-				lda fuel
-				cmp #0
-				bne .notEmpty
-				rts		
-.notEmpty
-				lda #48  + 128 - 1; '0' - 1
-.digitloop
-				dec screenstart,x
-				cmp screenstart,x
-				bne .done
-				lda #57 + 128 ; '9'
-				sta screenstart,x
-				lda #48 + 128 - 1 ; '0'
-				dex
-				cpx #5
-				bne .digitloop				
-.done				
-				dec fuel
-				rts
-					
 ; Increase score by one and update the onscreen counter
 increaseScoreAndProgress	subroutine
 				; now decrease progress counter. If reached zero, move to next level before returning
@@ -321,7 +353,7 @@ increaseScore
 				
 				; increase the digits on screen
 				lda #58  + 128; '9' + 1
-				ldx #20 ; position of score digits from the start of screen memory
+				ldx #21 ; position of score digits from the start of screen memory
 increaseDigits
 				inc screenstart,x
 				cmp screenstart,x
@@ -330,19 +362,19 @@ increaseDigits
 				sta screenstart,x
 				lda #58  + 128; '9' + 1
 				dex
-				cpx #20 - 5 ; reached the last digit?
+				cpx #21 - 5 ; reached the last digit?
 				bne increaseDigits				
 .doneIncreaseDigits			
 				rts
 			
 increaseScoreBy10
 				lda #58 + 128
-				ldx #19
+				ldx #20
 				jmp increaseDigits
 
 increaseScoreBy100
 				lda #58 + 128
-				ldx #18
+				ldx #19
 				jmp increaseDigits
 				
 increaseLevel	subroutine
@@ -353,13 +385,14 @@ increaseLevel	subroutine
 				bne .doneIncrease
 				ldx #0 ; back to first level, but increase speed
 				; Increase speed
-				lda delayReduction
+				lda minShipDx
 				clc
-				adc #delayReductionPerWraparound
-				sta delayReduction
+				adc	#amountToIncreaseSpeedBy
+				sta minShipDx
 .doneIncrease
 				stx levelNumber
 				jsr setUpLevel
+				jsr updateBonuses
 				rts
 				
 onceOnlyInit	subroutine
@@ -396,9 +429,6 @@ onceOnlyInit	subroutine
 				sta levelNumber
 				sta joystickDDR1	; prepare for joystick input
 				
-				lda #10
-				sta delayReduction
-				
 				jsr prepareTowerPositions
 				rts
 
@@ -424,8 +454,9 @@ init			subroutine
 				sta shipdy
 				sta towerheight
 				
-				lda #128 ; start with half full fuel
+				lda #0 ; start with no fuel
 				sta fuel
+				sta flags
 				
 				lda #8
 				sta scrollCounter
@@ -444,10 +475,7 @@ init			subroutine
 setUpLevel
 				ldx levelNumber
 				jsr setupTowerCharacters ; also sets up constants
-					
-				lda physicsCountdownInitialValue
-				sta physicsCountdown	
-				
+									
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
 				
@@ -746,7 +774,7 @@ drawtower
 				;; if the screen
 				sta character
 				ldy towerheight
-				cpy #2 ; One high, so print the top character instead of the middle
+				cpy #3 ; One high, so print the top character instead of the middle
 				bmi .shortTower
 .draw
 				;; draw first block at bottom right, then build up from there
@@ -931,20 +959,7 @@ random			subroutine
 				inc randseed
 				sta randseed
 				rts
-				
-delaycount		dc 0 ; doesn't need to be in zero page, as used to cause a delay anyway
-delayAmount		dc $30
-
-delay			ldx delayAmount
-				stx delaycount
-.1				dex
-				bne .1
-				ldx delaycount
-				dex
-				stx delaycount
-				bne .1
-				rts
-				
+								
 				; wait for raster to enter border
 rasterdelay
 		;		lda #3
@@ -1038,35 +1053,43 @@ clearship		lda #spacePrintable
 				jmp drawshipchar
 									
 control			subroutine				
-				lda fuel	; if fuel is exhausted, no control is possible
-				bne .notEmpty
-				rts
-.notEmpty
+				; if crashing, no control
+				lda flags
+				and #crashing
+				bne .controlDone
 				; scan keyboard for key presses or joystick
 				lda #0
 				sta $9120 ; reset keyboard state
 
-				lda joystickIn1
-				ora #255 - 32 ; set all other bits. Only care about fire button
-				and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
-								
+	;			lda joystickIn1
+	;			ora #255 - 32 ; set all other bits. Only care about fire button
+	;			and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
+				lda $9121
+											
 				ldx lastkey
 				sta lastkey
 
 				cpx #255 ; 255 indicates nothing is pressed
 				bne .notpress 
+				
 				cmp #255
 				beq .notpress
 				
-				; space just pressed
-				; apply an impulse
+				; something just pressed
+				; what?
+				cmp #254 ; space
+				beq thrust
+.controlDone		 
+				; ignore
+				rts
+						
 thrust			
 				lda #255
 				sta jetSound
 				lda #shipimpulse
 				sta shipdy
 				clc
-				lda #80
+				lda #30
 				adc shipdx
 				bcc .storedx
 				lda #255
@@ -1080,59 +1103,45 @@ thrust
 				sta shipDirection	
 				jsr swapMinorY
 .alreadyGoingUp
-				jsr decreaseFuel
-.notpress		
+.notpress	
+controlDone	
 				rts
 			
+temp			dc.b	0
+
 physics			subroutine
-				; update horizontal position 2 times
+				; returns with zero flag set if end of game
+
+				; update horizontal position
+				lda #4	; number of times to add the speed
+				sta	temp
+.impulseLoop
 				lda shipMinorX
 				clc
 				adc shipdx
 				sta shipMinorX
-				bcc .notSmoothScroll1
+				bcc .notSmoothScroll
 				jsr smoothScroll
-				jsr handleFullScroll
+				jsr handleFullScroll				
+.notSmoothScroll
+				dec	temp
+				bne	.impulseLoop
 				
-.notSmoothScroll1
-				lda shipMinorX
-				clc
-				adc shipdx
-				sta shipMinorX
-				bcc .notSmoothScroll2
-				jsr smoothScroll
-				jsr handleFullScroll
-.notSmoothScroll2
-				lda shipMinorX
-				clc
-				adc shipdx
-				sta shipMinorX
-				bcc .notSmoothScroll3
-				jsr smoothScroll
-				jsr handleFullScroll
-.notSmoothScroll3
-				lda shipMinorX
-				clc
-				adc shipdx
-				sta shipMinorX
-				bcc .notSmoothScroll4
-				jsr smoothScroll
-				jsr handleFullScroll
-.notSmoothScroll4
-				; is it time to update the rest of the physics
-				dec physicsCountdown
-				beq .timeToUpdate
-				rts
-.timeToUpdate
-				lda physicsCountdownInitialValue ; reset countdown timer
-				sta physicsCountdown
-			
-				; update ship x position
-				ldy #2 ; amount to reduce by
-				lda shipdx
+				; update ship x speed
+				ldy #1 ; amount to reduce by
+				ldx shipdx
 .dxloop
+				cpx minShipDx
 				beq .donedx
-				dec shipdx
+				
+				; speed up or slow down?
+				inx
+				cpx minShipDx
+				bpl .doneDecrease
+				dex
+				dex
+.doneDecrease
+				stx shipdx
 				dey
 				bne .dxloop								
 .donedx
@@ -1147,7 +1156,34 @@ physics			subroutine
 				lda shipy
 				clc
 				adc shipDirection
+
+				; check if hit top of screen, in which case we bounce
+				cmp #1
+				bpl .notTopBounce
+				lda #directionDown
+				sta shipDirection
+				
+				lda #1
+				sta shipMinorY
+				jmp .doneBounce
+.notTopBounce
+				cmp #20 ; hit bottom of screen?
+				bmi .doneBounce
+				
+				; if we are crashing, now it's the end of the game
+				lda flags
+				and #crashing
+				bne donePhysicsEndOfGame			
+				lda #directionUp
+				sta shipDirection
+				
+				lda #1
+				sta shipMinorY
+				lda #20
+				jmp .doneBounce							
+.doneBounce
 				sta shipy
+							
 .doneShipPosition			
 				; update ship velocity
 				; are we currently going up or down?
@@ -1164,7 +1200,7 @@ physics			subroutine
 				adc #gravity
 				sta shipdy
 .maxVelocity
-				rts
+				jmp donePhysicsNotEndOfGame	
 .goingUp
 				lda jetSound
 				cmp #0
@@ -1177,7 +1213,7 @@ physics			subroutine
 				sbc #gravity
 				bcc .switchToDown
 				sta shipdy
-				rts					
+				jmp donePhysicsNotEndOfGame						
 .switchToDown
 				lda #0
 				sta shipdy
@@ -1191,8 +1227,16 @@ swapMinorY
 				sec
 				sbc shipMinorY
 				sta shipMinorY
-				rts		
-							
+				jmp donePhysicsNotEndOfGame	
+donePhysicsNotEndOfGame
+				lda #0 ; clear zero flag to indicate not end of game
+				cmp #1
+				rts
+donePhysicsEndOfGame
+				lda #0 ; set zero flag to indicate end of game
+				cmp #0
+				rts
+			
 ;;;; Graphics routines
 copyROMCharacters	subroutine
 				;;; First copy original character definitions in
@@ -1246,16 +1290,39 @@ stopSound
 				sta voice2
 				sta voice3
 				sta soundVolume
+				sta explosionEffectCount
 				rts
 				
 updateSound subroutine
-;				ldx #0
-;				lda jetSound
-;				cmp #230
-;				bmi .makeSound ; don't set to make a sound, just use 0 (sound off)
-;				and #3
-;				beq .makeSound
-;				ldx jetSound
+				ldx explosionEffectCount
+				cpx #0
+				beq .engineSound
+				dec explosionEffectCount
+				beq .restoreScreen
+				
+				; shake the screen
+				jsr random
+				and #7
+				clc
+				adc #verticalScreenDefaultPosition
+				sta verticalScreenPosition
+				
+				jsr random
+				tax
+				and #1
+				clc
+				adc #horizontalScreenDefaultPosition
+				sta horizontalScreenPosition
+				
+				jmp .makeSound
+.restoreScreen
+				lda #verticalScreenDefaultPosition
+				sta verticalScreenPosition
+				lda #horizontalScreenDefaultPosition
+				sta horizontalScreenPosition
+				jmp .engineSound
+								
+.engineSound
 				ldx shipdx
 .makeSound
 				stx voice3
@@ -1289,7 +1356,21 @@ updateSound subroutine
 .doneEffect
 				stx	voice1
 				rts
+
+explosionEffectCount	dc.b	0
+
+explosionEffect	subroutine
+				lda #10
+				sta explosionEffectCount
+				rts
 				
+bonusSound1		subroutine
+				lda #200
+				sta fuelSoundCount
+				lda #40
+				sta effectCount
+				rts
+						
 powerUp			subroutine
 				lda #100
 				sta effectCount
@@ -1297,32 +1378,24 @@ powerUp			subroutine
 				
 effectCount		dc.b 0
 
-
-; don't need to be in zero page as only used during explosion, which isn't time critical
-explodeCountLo		dc 0
-explosionSize		dc 0
-explosionLeftEdge	dc 0
-explosionRightEdge	dc 0
-explosionTopEdge	dc 0
-explosionBottomEdge	dc 0
-
-explosionX			dc 0
-explosionY			dc 0
-explosionColor		dc 165
-
 screenWidth			equ 23
 screenHeight		equ 24
 
 explode subroutine
+				ldy #255
+				ldx #255				
+.loop
+				stx borderPaper
+				sty	voice2
+				sty voice1
+				sty voice0
+				dex
+				bne .loop
+				dey
+				bne .loop
 				rts
 
 startScreen     subroutine
-				lda #6 ; blue
-				sta explosionColor
-				jsr explode
-				lda #1
-				sta explosionColor
-				jsr explode
 				jsr stopSound
 				
 				; clear screen and display score
@@ -1332,15 +1405,6 @@ startScreen     subroutine
 				sta.z cursor + 1
 				jsr printline
 				
-				; if we are beyond the first level, print the continue message
-				lda levelNumber
-				beq .notContinue
-				lda #<continueMessage
-				sta.z cursor;
-				lda #>continueMessage
-				sta.z cursor + 1
-				jsr printline
-.notContinue
 				jsr waitForStartKey
 				rts
 								
@@ -1351,29 +1415,24 @@ waitForStartKey subroutine
 				sta $9120 ; reset keyboard state
 				lda $9121
 								
-				cmp #247 ; b key
-				beq .restart
-
 				cmp #254 ; space key
-				beq .done
+				beq .restart
 				
 				lda joystickIn1
 				and #32 ; set all other bits. Only care about fire button
 				cmp #32								
 				beq waitForStartKey
-				jmp .done
+				jmp .restart
 				
 .restart
 				lda #0
 				sta levelNumber ; reset level to start
-				lda #10
-				sta delayReduction
-.done
 				lda #0
 				sta shipMinorX
 				
-				lda #200
+				lda #100
 				sta shipdx
+				
 				rts
 
 ; level format:
@@ -1388,26 +1447,24 @@ waitForStartKey subroutine
 
 ;       19-20: number of moves before switching to next level (lo,hi)
 
-;       21   : physics countdown timer initial value
-;       22   : frames between scroll
-;		23   : flags
-;		24	 ; background map number
+;		21	 ; minimum horizontal speed
+;		22	 ; background map number
+
 
 fuelActiveFlag	equ #1
-space	equ spacePrintable
 
 ; specify the order of levels. 255 instructs to wrap around
 finishedLevels	equ	255
 levelOrder	dc.b	1,2,0,3,0,4,0,0,5,6,finishedLevels
 
 startOfLevelDefinitions
-spaceLevel				dc.b	space,space,space,space
-						dc.b	space,space,starRightPrintable,starLeftPrintable
-						dc.b	space,space,space,space
-						dc.b	starRightPrintable,starLeftPrintable,space,space
-						dc.b	1,14,8 ; black border, black paper
-						dc.b	150,1
-						dc.b	1, 1, 1, 1
+spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	spacePrintable,spacePrintable,starRightPrintable,starLeftPrintable
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
+						dc.b	5,14,8 ; black border, black paper
+						dc.b	250,1
+						dc.b	80, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
@@ -1415,31 +1472,31 @@ towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,b
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,2
 						dc.b	1,2 
-						dc.b	1, 1, 0, 0
+						dc.b	10, 0
 											
-towerChars1				dc.b	space,towerRightPrintable,towerLeftPrintable,space
+towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,0
 						dc.b	1,2 
-						dc.b	1,1, 0, 0
+						dc.b	10, 0
 						
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	7,7,0
+						dc.b	28,7,0
 						dc.b	150,1 
-						dc.b	1, 1, 0, 0
+						dc.b	15, 0
 						
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	space,towerRightPrintable,towerLeftPrintable,space
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	5,20,0
-						dc.b	150,1 
-						dc.b	1 ,1, 0, 0
+						dc.b	7,15,0
+						dc.b	150,2 
+						dc.b	15, 0
 						
 maxLevel				equ 	7
 
@@ -1465,7 +1522,7 @@ setupTowerCharacters	subroutine
 				tax
 				; x now holds the number of the level description					
 .xloop
-				lda #25 ; number of positions to skip over to get next set of characters
+				lda #23 ; number of positions to skip over to get next set of characters
 				cpx #0 ; use this character set?
 				beq .useThis
 				jsr addcursor
@@ -1500,17 +1557,12 @@ setupTowerCharacters	subroutine
 				sta progressCounterHi
 				
 				jsr .getNext
-				sta physicsCountdownInitialValue
-				
-				jsr .getNext
-				sta delayAmount
-				
-				jsr .getNext
-				sta flags
-				
+				sta minShipDx
+							
 				jsr .getNext
 				tax
 				jsr prepareColors
+								
 				rts
 
 .getNext		lda (cursor),y
@@ -1547,22 +1599,22 @@ programEnd
 startOfChars
 scrollable		
 				; first the scrollable characters. All the left hand edges, then right hand
-				; striped block, scrollable
 leftEdges
 
 solidLeftChar	dc.b	0,0,0,0,0,0,0,0
 towerLeftChar	dc.b	0,0,0,0,0,0,0,0
-fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
 starLeftChar	dc.b	0,0,0,0,0,0,0,0
 blackLeftChar	dc.b	0,0,0,0,0,0,0,0
+; bonus characters
+fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
 solidRightChar	dc.b	255,255,0,255,255,0,255,255
 towerRightChar	dc.b	145,137,197,163,145,137,197,163
-fuelRightChar	dc.b	126,66,223,199,223,223,94,126
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 blackRightChar	dc.b	255,255,255,255,255,255,255,255
+fuelRightChar	dc.b	126,66,223,199,223,223,94,126
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
@@ -1593,10 +1645,19 @@ numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 				; now the single character rotational scrolling blocks
 				; wavy block at bottom of screen
 bottomBlockChar	dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
+jetSpotChar		dc.b	0, 0, 0, 1, 0, 0, 0, 0
+
 bottomBlockPrintable equ (bottomBlockChar - startOfChars) / 8
+jetSpotPrintable equ (jetSpotChar - startOfChars) / 8
 
 endOfScenery
 
+		; now for the space
+		org startOfChars + 32  *8
+		
+spaceChar		dc.b	0, 0, 0, 0, 0, 0, 0, 0
+spacePrintable equ (spaceChar - startOfChars) / 8	
+		
 				; now for the pre-computed space ship characters, first the top half, then the bottom half
 shipBottomPrintable	equ	(shipBottom - startOfChars / 8)
 shipTopPrintable	equ (shipTop - startOfChars) / 8
@@ -1622,12 +1683,11 @@ shipBottom
 				dc.b	128+64+32+16+8+4, 255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0, 0
 				dc.b	128+64+32+16,128+64+32+16+8+4,255, 255, 128+64+32+16+8+4, 128+64+32+16, 128+64, 0
 enfOfChars
-				dc.b	1,2,4,8,16,32,64,128
 				
-				org	startOfChars + 32 * 8
-				dc.b	0,0,0,0,0,0,0,0 ; define the space character
+		;		org	startOfChars + 32 * 8
+		;		dc.b	0,0,0,0,0,0,0,0 ; define the space character
 				
-				org	startOfChars + 33 * 8
+		;		org	startOfChars + 33 * 8
 				
 ; background map format is:
 ; starts in backbround mode (i.e. space)
@@ -1651,33 +1711,21 @@ backgroundMap
 				dc 253 ; end
 ; map 1
 				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 1, 255, 2, 22, 22,
-				dc	254, 7, 255, 1, 22, 22,
-				dc	254, 4, 255, 7, 22, 22,
-				dc	254, 2, 255, 1, 22, 22,
-				dc	254, 7, 255, 4, 22, 22,
-				dc	254, 1, 255, 1, 22, 22,
-				dc	254, 4, 255, 2, 22, 22,
-				dc	254, 1, 255, 4, 22, 22,
-				dc	254, 7, 255, 1, 22, 22,
-				dc	254, 2, 255, 7, 22, 22,
+				dc	254, 1, 255, 2, 44, 44,
+				dc	254, 7, 255, 1, 44, 44,
+				dc	254, 4, 255, 7, 44, 44,
+				dc	254, 2, 255, 1, 44, 44,
+				dc	254, 7, 255, 4, 44, 44
+				dc 253 ; end
 
-				dc 253 ; end
-; map 2
-				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 2, 255, 4 ; change colours to clouds
-				dc	70,1,20,2,1,2,16,7,7,1,1,2,4,7,6,6,16,6,115
-				dc 	255, 5 ; change colour to buildings
-				dc	1,3,1,15,1,1,1,3,1,15,3,1,1,1,1,6,1,7,4,1,5,3,2,7,11,2,3,5
-				dc 	255, 1 ; change colour to grass
-				dc	110
-				dc 253 ; end
 dataEnd
 				dc.b	0
 
 				echo "To run: SYS ", start
 				echo "Total length ", dataEnd - start
-				echo "Space left ", 7168 - programEnd
+				echo "Code space left ", 7168 - programEnd
+				echo "Characters left ", (spaceChar - endOfScenery) / 8
+				
 
 
 					
