@@ -13,7 +13,7 @@ restart
 				jsr scrollNow
 				jmp smoothScrollLoop
 				
-welcome			dc.b	147,18,31,"----A---F---L--- 00000",146,0
+welcome			dc.b	147,18,31,">>>>>>>>>>>>>>>> 00000",146,0
 startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
 				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
 continueMessage	dc.b	17, 29, 29,  29, 18,             "B  TO START FROM" , 13, 29, 29, 29, 18, "   BEGINNING    ",0
@@ -105,14 +105,42 @@ bonusLaser				equ		12
 .outOfFuel
 				jmp restart
 
-collision subroutine
+collision 		subroutine
 				; if end of game, return with zero flag not set
 				; what have we collided with?
 				cmp #fuelLeftPrintable
 				beq .collectFuelLeft
 				cmp #fuelRightPrintable
 				beq .collectFuelRight
-				rts ; zero flag not set, indicates fatal
+				
+				; explosion?
+				cmp #explodePrintable
+				beq .finishedNotFatal
+				
+				; collided with something. Draw an explosion
+				dec	shipToBeDrawnAt1
+				dec	shipToBeDrawnAt1
+				dec	shipToBeDrawnAt2
+				dec	shipToBeDrawnAt2
+				
+				lda #explodePrintable
+				ldy #5
+.explosionLoop
+				sta (shipToBeDrawnAt1),y
+				sta (shipToBeDrawnAt2),y
+				dey
+				bne .explosionLoop
+				
+				jsr explosionEffect
+				jsr updateBonuses
+				
+				lda #0
+				sta shipdy
+				
+				dec fuel
+				lda fuel
+				cmp #255 ; wrapped around, i.e. no fuel left
+				rts ; zero flag set, indicates fatal
 .collectFuelLeft
 				lda #spacePrintable
 				ldy #1
@@ -136,7 +164,7 @@ collision subroutine
 				lda #fuelIncreaseAmount
 				jsr increaseFuel
 .finishedNotFatal
-				lda #0 ; set zero flag to indicate non-fatal
+				lda #1 ; clear zero flag to indicate non-fatal
 				rts
 			
 endGame		
@@ -160,7 +188,7 @@ dontdrawship
 				cmp #spacePrintable
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
-				bne endGame
+				beq endGame
 .doneCollision1
 				lda charReplaced2
 				cmp #spacePrintable
@@ -170,7 +198,7 @@ dontdrawship
 				jsr subcursor
 				lda charReplaced2
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
-				bne endGame
+				beq endGame
 .doneCollision2
 				jsr control		
 				jsr updateSound
@@ -1159,17 +1187,28 @@ physics			subroutine
 				clc
 				adc shipDirection
 
-				; check if hit top of screen, in whic case we bounce
+				; check if hit top of screen, in which case we bounce
 				cmp #1
-				bpl .doneBounce
+				bpl .notTopBounce
 				lda #directionDown
 				sta shipDirection
 				
 				lda #1
 				sta shipMinorY
+				jmp .doneBounce
+.notTopBounce
+				cmp #20 ; hit bottom of screen?
+				bmi .doneBounce
+				lda #directionUp
+				sta shipDirection
+				
+				lda #1
+				sta shipMinorY
+				lda #20
+				jmp .doneBounce							
 .doneBounce
 				sta shipy
-				
+							
 .doneShipPosition			
 				; update ship velocity
 				; are we currently going up or down?
@@ -1268,9 +1307,16 @@ stopSound
 				sta voice2
 				sta voice3
 				sta soundVolume
+				sta explosionEffectCount
 				rts
 				
 updateSound subroutine
+				ldx explosionEffectCount
+				cpx #0
+				beq .engineSound
+				dec explosionEffectCount
+				jmp .makeSound
+.engineSound
 				ldx shipdx
 .makeSound
 				stx voice3
@@ -1304,7 +1350,14 @@ updateSound subroutine
 .doneEffect
 				stx	voice1
 				rts
-		
+
+explosionEffectCount	dc.b	0
+
+explosionEffect	subroutine
+				lda #255
+				sta explosionEffectCount
+				rts
+				
 bonusSound1		subroutine
 				lda #200
 				sta fuelSoundCount
@@ -1405,9 +1458,9 @@ spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	spacePrintable,spacePrintable,starRightPrintable,starLeftPrintable
 						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
-						dc.b	1,14,8 ; black border, black paper
-						dc.b	150,1
-						dc.b	128, 1
+						dc.b	5,14,8 ; black border, black paper
+						dc.b	250,1
+						dc.b	80, 1
 
 towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
@@ -1429,17 +1482,17 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	7,7,0
+						dc.b	28,7,0
 						dc.b	150,1 
-						dc.b	10, 0
+						dc.b	15, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	5,20,0
-						dc.b	150,1 
-						dc.b	10, 0
+						dc.b	7,15,0
+						dc.b	150,2 
+						dc.b	15, 0
 						
 maxLevel				equ 	7
 
