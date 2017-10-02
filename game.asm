@@ -1,5 +1,5 @@
 				processor 6502
-				org $1280 ; 1400 originally. should be free
+				org $1240 ; 1400 originally. should be free
 				
 				; keyboard scan routine at eb1e, fills in $cb and f5. Scans $9120 and $9121. quite long
 start   		subroutine
@@ -291,15 +291,21 @@ updateFrame		subroutine
 				sta temp2
 				
 				ldx #screenstarthigh	; put start of screen hi in cursor position
-				ldy #22 					; screen scroll start lo
+				ldy #0	 				; screen scroll start lo
 				stx.z colorcursor + 1
 				sty.z colorcursor
-				ldy #0			; current offset from cursor
+
+				ldy #22			; current offset from cursor
 				ldx	#0			; x position				
 .loop
-				lda (colorcursor),y			
+				lda (colorcursor),y
+				cmp #spacePrintable
+				beq .space
 				cmp #explodePrintable
 				beq .explosion
+				cmp #baddyLeftPrintable
+				beq .baddy
+.space
 .doneChange
 				inc colorcursor
 				beq .pageJump
@@ -314,6 +320,8 @@ updateFrame		subroutine
 .resetx
 				ldx #0
 				dec temp2
+				lda #255
+				cmp temp2
 				beq .done ; end of screen?
 				jmp .loop
 .pageJump
@@ -325,14 +333,49 @@ updateFrame		subroutine
 				beq .explosionPropogate
 				jmp .doneChange
 .explosionPropogate
-				cpx #0
+				lda temp2
+				cmp #0
 				beq .doneChange
 				lda #spacePrintable
 				sta (colorcursor),y
-				ldy #23
+				ldy #23 + 22
 				lda #explodePrintable
 				sta (colorcursor),y
+				ldy #22
+				jmp .doneChange
+
+.baddy
+				; if we are at the far end of the screen, don't move, as only half of the
+				; baddy will have been drawn
+				cpx #21
+				beq .doneChange
+				
+				; if on the ground, randomly launch
+				tay
+				lda temp2
+				cmp #0
+				bne .flying
+				jsr random
+				and #$7
+				beq .flying
+				ldy #22
+				jmp .doneChange		
+.flying
+				tya
+				ldy temp2
+				cpy #screenHeight - 4
+				beq .notDrawNextBaddy
 				ldy #0
+				sta (colorcursor),y
+				lda #baddyRightPrintable
+				iny
+				sta (colorcursor),y
+.notDrawNextBaddy
+				lda #spacePrintable
+				ldy #23
+				sta (colorcursor),y
+				dey
+				sta (colorcursor),y
 				jmp .doneChange
 																		
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
@@ -878,17 +921,39 @@ drawtower
 				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta nextLine,x
 .storecharcomplete3
-				lda #spacePrintable ; back to printing spaces
+			;	lda #spacePrintable ; back to printing spaces
 				
 				; do we need to print the second edge?
 				lda fuelChar
 				cmp #fuelLeftPrintable
-				beq .switchToRight
-								
+				beq .switchToRight1
+				cmp #baddyLeftPrintable
+				beq .switchToRight2
+				
 				; switch to printing the left edge again and choose the position for
 				; the next fuel character
-				lda #fuelLeftPrintable
+				
+				; work out the row
+				jsr random 
+				and #$0f
+				clc
+				adc #$3
+				sta fuelRow
+				
+				jsr random
+				and #$1
+				beq .nextIsFuel
+				
+				lda #screenHeight - 3
+				sta fuelRow
+				
+				lda #baddyLeftPrintable
+				jmp .gotNext
+.nextIsFuel
+				lda #fuelLeftPrintable		
+.gotNext
 				sta fuelChar
+;				jsr random
 				lda #6
 				and #$7 ; random number 0 to 7
 				ora #$80 ; set MSB to delay drawing until after next tower
@@ -898,21 +963,19 @@ drawtower
 .not7
 				sta fuelColumn
 				
-				; now the row
-				jsr random 
-				and #$0f
-				clc
-				adc #$3
-				sta fuelRow
 .305
 				dey
 				jmp .3
-.switchToRight
+.switchToRight1
 				lda #fuelRightPrintable
 				sta fuelChar
 				dec fuelColumn ; set to print the right hand edge next column
 				jmp .305
-
+.switchToRight2
+				lda #baddyRightPrintable
+				sta fuelChar
+				dec fuelColumn ; set to print the right hand edge next column
+				jmp .305
 .drawnGap
 				; now draw the the top part
 				ldy #1 ; draw 1 top character then switch to middle				
@@ -1024,8 +1087,7 @@ rasterdelay
 				bpl .rasterloop
 				
 ;				lda #0
-;				sta borderPaper
-				
+;				sta borderPaper				
 .rasterLowerLoop
 
 				lda rasterline
@@ -1034,7 +1096,6 @@ rasterdelay
 
 ;				lda #1
 ;				sta borderPaper
-
 				rts
 
 workOutShipPosition
@@ -1536,7 +1597,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,3
-						dc.b	1,2 
+						dc.b	1,3 
 						dc.b	10, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
@@ -1544,7 +1605,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	28,7,3
-						dc.b	150,1 
+						dc.b	150,2
 						dc.b	15, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
@@ -1552,7 +1613,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,15,3
-						dc.b	150,2 
+						dc.b	150,3
 						dc.b	15, 0
 						
 maxLevel				equ 	7
@@ -1662,8 +1723,8 @@ solidLeftChar	dc.b	0,0,0,0,0,0,0,0
 towerLeftChar	dc.b	0,0,0,0,0,0,0,0
 starLeftChar	dc.b	0,0,0,0,0,0,0,0
 blackLeftChar	dc.b	0,0,0,0,0,0,0,0
-; bonus characters
 fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
+baddyLeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
@@ -1672,11 +1733,14 @@ towerRightChar	dc.b	145,137,197,163,145,137,197,163
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 blackRightChar	dc.b	255,255,255,255,255,255,255,255
 fuelRightChar	dc.b	126,66,223,199,223,223,94,126
+baddyRightChar	dc.b	0,126,126,126,126,126,126,0
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
 fuelLeftPrintable equ (fuelLeftChar - startOfChars) / 8
 fuelRightPrintable equ (fuelRightChar - startOfChars) / 8
+baddyLeftPrintable equ (baddyLeftChar - startOfChars) / 8
+baddyRightPrintable equ (baddyRightChar - startOfChars) / 8
 towerLeftPrintable equ (towerLeftChar - startOfChars) / 8
 towerRightPrintable equ (towerRightChar - startOfChars) / 8
 solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
@@ -1693,7 +1757,11 @@ solidChar		dc.b	255,255,0,255,255,0,255,255
 solidPrintable equ (solidChar - startOfChars) / 8	
 blackChar		dc.b	255,255,255,255,255,255,255,255
 blackPrintable equ (blackChar - startOfChars) / 8	
-	
+goingUpChar		dc.b	255,0,0,0,0,0,0,0
+goingUpPrintable equ (goingUpChar - startOfChars) / 8	
+goingDownChar	dc.b	0,0,0,0,0,0,0,255
+goingDownPrintable equ (goingDownChar - startOfChars) / 8	
+
 singleScrollable
 numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 
