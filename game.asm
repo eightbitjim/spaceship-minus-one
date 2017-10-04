@@ -197,7 +197,6 @@ dontdrawship
 				cmp #spacePrintable
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
-		;		beq endGame
 .doneCollision1
 				lda charReplaced2
 				cmp #spacePrintable
@@ -207,12 +206,10 @@ dontdrawship
 				jsr subcursor
 				lda charReplaced2
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
-		;		beq endGame
 .doneCollision2
 				jsr control		
 				jsr updateSound
 				jsr rasterdelay
-		;		jsr clearship
 				jsr physics		
 				beq endGame
 				
@@ -350,32 +347,47 @@ updateFrame		subroutine
 				cpx #21
 				beq .doneChange
 				
-				; if on the ground, randomly launch
-				tay
+				; if on the ground (1 above ground, as 2 high), randomly launch
 				lda temp2
-				cmp #0
+				cmp #1
 				bne .flying
 				jsr random
 				and #$7
 				beq .flying
-				ldy #22
-				jmp .doneChange		
+				ldy #22 + 22
+				jmp .drawBottomOnly		
 .flying
-				tya
+				; clear space below the rocket
+				lda #spacePrintable
+				ldy #23 + 22
+				sta (colorcursor),y
+				dey
+				sta (colorcursor),y
+				
+				; have we reached the top of the screen?
 				ldy temp2
 				cpy #screenHeight - 4
 				beq .notDrawNextBaddy
+				
+				; draw whole rocket
+				; first the top
 				ldy #0
+				lda #baddyLeftPrintable
 				sta (colorcursor),y
 				lda #baddyRightPrintable
 				iny
 				sta (colorcursor),y
+				
+				; then the bottom
+				ldy #22
+.drawBottomOnly
+				lda #baddyBottomLeftPrintable
+				sta (colorcursor),y
+				lda #baddyBottomRightPrintable
+				iny
+				sta (colorcursor),y
 .notDrawNextBaddy
-				lda #spacePrintable
-				ldy #23
-				sta (colorcursor),y
-				dey
-				sta (colorcursor),y
+				ldy #22
 				jmp .doneChange
 																		
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
@@ -944,7 +956,7 @@ drawtower
 				and #$1
 				beq .nextIsFuel
 				
-				lda #screenHeight - 3
+				lda #screenHeight - 4
 				sta fuelRow
 				
 				lda #baddyLeftPrintable
@@ -1079,23 +1091,23 @@ random			subroutine
 								
 				; wait for raster to enter border
 rasterdelay
-;				lda #3
-;				sta borderPaper
+				lda #3
+				sta borderPaper
 .rasterloop
 				lda rasterline
 				cmp #131 ; TODO: different value for NTSC, probably lower
 				bpl .rasterloop
 				
-;				lda #0
-;				sta borderPaper				
+				lda #0
+				sta borderPaper				
 .rasterLowerLoop
 
 				lda rasterline
 				cmp #130 ;130; TODO: different value for NTSC, probably lower
 				bmi .rasterloop
 
-;				lda #1
-;				sta borderPaper
+				lda #1
+				sta borderPaper
 				rts
 
 workOutShipPosition
@@ -1163,9 +1175,25 @@ drawshipchar
 				sta (shipToBeDrawnAt2),x
 				rts
 				
-clearship		lda #spacePrintable
-				sta character
-				jmp drawshipchar
+clearship		
+				ldx #0
+				lda (shipToBeDrawnAt1),x
+				cmp #shipTopPrintable
+				bmi .doneReplace1
+				lda #spacePrintable
+				sta (shipToBeDrawnAt1),x
+.doneReplace1
+				lda (shipToBeDrawnAt2),x
+				cmp #shipTopPrintable
+				bmi .doneReplace2
+				lda #spacePrintable
+				sta (shipToBeDrawnAt2),x
+.doneReplace2
+				rts
+				
+				;lda #spacePrintable
+				;sta character
+				;jmp drawshipchar
 									
 control			subroutine				
 				; if crashing, no control
@@ -1725,6 +1753,7 @@ starLeftChar	dc.b	0,0,0,0,0,0,0,0
 blackLeftChar	dc.b	0,0,0,0,0,0,0,0
 fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
 baddyLeftChar	dc.b	0,0,0,0,0,0,0,0
+baddyBottomLeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
@@ -1733,7 +1762,8 @@ towerRightChar	dc.b	145,137,197,163,145,137,197,163
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 blackRightChar	dc.b	255,255,255,255,255,255,255,255
 fuelRightChar	dc.b	126,66,223,199,223,223,94,126
-baddyRightChar	dc.b	0,126,126,126,126,126,126,0
+baddyRightChar	dc.b	16,16,56,56,40,40,40,40
+baddyBottomRightChar	dc.b	40,40,124,198,254,254,198,130
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
@@ -1741,6 +1771,8 @@ fuelLeftPrintable equ (fuelLeftChar - startOfChars) / 8
 fuelRightPrintable equ (fuelRightChar - startOfChars) / 8
 baddyLeftPrintable equ (baddyLeftChar - startOfChars) / 8
 baddyRightPrintable equ (baddyRightChar - startOfChars) / 8
+baddyBottomLeftPrintable equ (baddyBottomLeftChar - startOfChars) / 8
+baddyBottomRightPrintable equ (baddyBottomRightChar - startOfChars) / 8
 towerLeftPrintable equ (towerLeftChar - startOfChars) / 8
 towerRightPrintable equ (towerRightChar - startOfChars) / 8
 solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
