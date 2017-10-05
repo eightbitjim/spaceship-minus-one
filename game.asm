@@ -493,13 +493,22 @@ increaseLevel	subroutine
 				cpx #maxLevel
 				bne .doneIncrease
 				ldx #0 ; back to first level, but increase speed
+				
 				; Increase speed
 				lda minShipDx
 				clc
 				adc	#amountToIncreaseSpeedBy
+				bcc .notSpeedWrapAround
+				lda #255
+.notSpeedWrapAround
 				sta minShipDx
+				
+				; increase rocket frequency
+				inc rocketProbability
+				inc rocketProbability
 .doneIncrease
 				stx levelNumber
+
 				jsr setUpLevel
 				jsr updateBonuses
 				rts
@@ -1655,12 +1664,7 @@ maxLevel				equ 	7
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 ;;;; Every odd numbered level will be level 1. Otherwise, it's the level number divided by 2
-setupTowerCharacters	subroutine		
-				lda #1
-				sta rocketProbability ; default value
-				lda #0
-				sta temp ; speedup value
-				
+setupTowerCharacters	subroutine						
 				lda #<startOfLevelDefinitions
 				sta cursor
 				lda #>startOfLevelDefinitions
@@ -1715,8 +1719,6 @@ setupTowerCharacters	subroutine
 				sta progressCounterHi
 				
 				jsr .getNext
-				clc
-				adc temp ; add speedup value
 				sta minShipDx
 							
 				jsr .getNext
@@ -1729,17 +1731,7 @@ setupTowerCharacters	subroutine
 				rts
 .endOfLevels
 				ldy #0 ; reset back to start
-				; increase speed
-				lda temp
-				clc
-				adc #20 ; make faster
-				bcc .doneSpeedup
-				lda #255 ; max value
-.doneSpeedup
-				sta temp
-					
-				; increase rocket frequency
-				inc rocketProbability
+.doneSpeedup					
 				jmp .endOfLevelsReturn
 				
 resetScroll		subroutine
