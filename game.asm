@@ -1,5 +1,5 @@
 				processor 6502
-				org $1240 ; 1400 originally. should be free
+				org $1200 ; 1400 originally. should be free
 				
 				; keyboard scan routine at eb1e, fills in $cb and f5. Scans $9120 and $9121. quite long
 start   		subroutine
@@ -100,6 +100,7 @@ lastFrameWasScroll	equ 43
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
 flags			dc 0 ; bit 0 indicates ship is crashing
+rocketProbability	dc	1
 
 crashing	equ 1
 
@@ -293,7 +294,7 @@ updateFrame		subroutine
 				sty.z colorcursor
 
 				ldy #22			; current offset from cursor
-				ldx	#0			; x position				
+				ldx	#22			; 22-x position				
 .loop
 				lda (colorcursor),y
 				cmp #spacePrintable
@@ -307,15 +308,14 @@ updateFrame		subroutine
 				inc colorcursor
 				beq .pageJump
 .donePageJump
-				inx
-				cpx #22
+				dex
 				beq .resetx
 .doneResetX
 				jmp .loop		
 .done
 				jmp donePrepareLine
 .resetx
-				ldx #0
+				ldx #22
 				dec temp2
 				lda #255
 				cmp temp2
@@ -344,7 +344,7 @@ updateFrame		subroutine
 .baddy
 				; if we are at the far end of the screen, don't move, as only half of the
 				; baddy will have been drawn
-				cpx #21
+				cpx #1;21
 				beq .doneChange
 				
 				; if on the ground (1 above ground, as 2 high), randomly launch
@@ -933,7 +933,6 @@ drawtower
 				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta nextLine,x
 .storecharcomplete3
-			;	lda #spacePrintable ; back to printing spaces
 				
 				; do we need to print the second edge?
 				lda fuelChar
@@ -953,8 +952,9 @@ drawtower
 				sta fuelRow
 				
 				jsr random
-				and #$1
-				beq .nextIsFuel
+				and #$7
+				cmp rocketProbability
+				bpl .nextIsFuel
 				
 				lda #screenHeight - 4
 				sta fuelRow
@@ -1091,23 +1091,23 @@ random			subroutine
 								
 				; wait for raster to enter border
 rasterdelay
-				lda #3
-				sta borderPaper
+;				lda #3
+;				sta borderPaper
 .rasterloop
 				lda rasterline
 				cmp #131 ; TODO: different value for NTSC, probably lower
 				bpl .rasterloop
 				
-				lda #0
-				sta borderPaper				
+;				lda #0
+;				sta borderPaper				
 .rasterLowerLoop
 
 				lda rasterline
 				cmp #130 ;130; TODO: different value for NTSC, probably lower
 				bmi .rasterloop
 
-				lda #1
-				sta borderPaper
+;				lda #1
+;				sta borderPaper
 				rts
 
 workOutShipPosition
@@ -1467,8 +1467,15 @@ updateSound subroutine
 				lda #horizontalScreenDefaultPosition
 				sta horizontalScreenPosition
 				jmp .engineSound
-								
+.crashSound
+				ldx #shipy
+;				stx fuelSoundCount
+				jmp .makeSound			
 .engineSound
+				lda flags
+				and #crashing
+				bne .crashSound
+				
 				ldx shipdx
 .makeSound
 				stx voice3
@@ -1648,7 +1655,12 @@ maxLevel				equ 	7
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 ;;;; Every odd numbered level will be level 1. Otherwise, it's the level number divided by 2
-setupTowerCharacters	subroutine				
+setupTowerCharacters	subroutine		
+				lda #1
+				sta rocketProbability ; default value
+				lda #0
+				sta temp ; speedup value
+				
 				lda #<startOfLevelDefinitions
 				sta cursor
 				lda #>startOfLevelDefinitions
@@ -1703,12 +1715,13 @@ setupTowerCharacters	subroutine
 				sta progressCounterHi
 				
 				jsr .getNext
+				clc
+				adc temp ; add speedup value
 				sta minShipDx
 							
 				jsr .getNext
 				tax
-				jsr prepareColors
-								
+				jsr prepareColors	
 				rts
 
 .getNext		lda (cursor),y
@@ -1716,7 +1729,17 @@ setupTowerCharacters	subroutine
 				rts
 .endOfLevels
 				ldy #0 ; reset back to start
-				; increase speed (TODO)
+				; increase speed
+				lda temp
+				clc
+				adc #20 ; make faster
+				bcc .doneSpeedup
+				lda #255 ; max value
+.doneSpeedup
+				sta temp
+					
+				; increase rocket frequency
+				inc rocketProbability
 				jmp .endOfLevelsReturn
 				
 resetScroll		subroutine
@@ -1874,7 +1897,15 @@ backgroundMap
 				dc	254, 2, 255, 1, 44, 44,
 				dc	254, 7, 255, 4, 44, 44
 				dc 253 ; end
-
+; map 2
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 1, 255, 2, 44, 44,
+				dc	254, 7, 255, 1, 44, 44,
+				dc	254, 4, 255, 7, 44, 44,
+				dc	254, 2, 255, 1, 44, 44,
+				dc	254, 7, 255, 4, 44, 44
+				dc 253 ; end
+				
 dataEnd
 				dc.b	0
 
