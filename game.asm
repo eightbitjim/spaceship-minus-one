@@ -1591,6 +1591,8 @@ waitForStartKey subroutine
 				sta levelNumber ; reset level to start
 				lda #0
 				sta shipMinorX
+				lda #2
+				sta rocketProbability
 				
 				lda #100
 				sta shipdx
@@ -1599,9 +1601,9 @@ waitForStartKey subroutine
 
 ; level format:
 ; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower on top
-;       4 - 7: front, middle, middle, back edge characters for top and bottom edges of tower on top
+;       4 - 7: front, middle, middle, back edge characters for edges of tower on top
 ;       8 - 11: front, middle, middle, back edge characters for mid-way through tower on bottom
-;       12 - 15: front, middle, middle, back edge characters for top and bottom edges of tower on bottom
+;       12 - 15: front, middle, middle, back edge characters for edges of tower on bottom
 
 ;       16    : horizontal gap between towers
 ;       17    : vertical gap between towers
