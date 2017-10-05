@@ -1,5 +1,5 @@
 				processor 6502
-				org $1280 ; 1400 originally. should be free
+				org $1200 ; 1400 originally. should be free
 				
 				; keyboard scan routine at eb1e, fills in $cb and f5. Scans $9120 and $9121. quite long
 start   		subroutine
@@ -100,6 +100,7 @@ lastFrameWasScroll	equ 43
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
 flags			dc 0 ; bit 0 indicates ship is crashing
+rocketProbability	dc	1
 
 crashing	equ 1
 
@@ -189,6 +190,7 @@ smoothScrollLoop
 				sta lastFrameWasScroll
 				jmp dontdrawship
 .normal
+				jsr clearship
 				jsr workOutShipPosition
 				jsr drawship
 dontdrawship
@@ -196,7 +198,6 @@ dontdrawship
 				cmp #spacePrintable
 				beq .doneCollision1
 				jsr collision ; deal with the collision. Returns with zero flag not set if fatal
-		;		beq endGame
 .doneCollision1
 				lda charReplaced2
 				cmp #spacePrintable
@@ -206,18 +207,17 @@ dontdrawship
 				jsr subcursor
 				lda charReplaced2
 				jsr collision ; deal with the collision. Returns with zero flag set if fatal
-		;		beq endGame
 .doneCollision2
 				jsr control		
 				jsr updateSound
 				jsr rasterdelay
-				jsr clearship
 				jsr physics		
 				beq endGame
 				
 				jmp smoothScrollLoop
 				
 scrollNow
+				jsr clearship
 				jsr workOutShipPosition
 				jsr scroll
 				jsr updatePeriodic
@@ -273,14 +273,123 @@ smoothScroll	subroutine
 				rts
 				
 handleFullScroll
-				lda #5
-				cmp scrollCounter
+				lda scrollCounter
+				cmp #5 
 				beq prepareLine
+				cmp #6
+				beq updateFrame
 donePrepareLine
 				dec scrollCounter				
 				beq	scrollNow 
 				rts
+
+updateFrame		subroutine
+				; update positions of characters. Happens out of phase with full character scrolling
+				lda #screenHeight - 4
+				sta temp2
 				
+				ldx #screenstarthigh	; put start of screen hi in cursor position
+				ldy #0	 				; screen scroll start lo
+				stx.z colorcursor + 1
+				sty.z colorcursor
+
+				ldy #22			; current offset from cursor
+				ldx	#22			; 22-x position				
+.loop
+				lda (colorcursor),y
+				cmp #spacePrintable
+				beq .space
+				cmp #explodePrintable
+				beq .explosion
+				cmp #baddyLeftPrintable
+				beq .baddy
+.space
+.doneChange
+				inc colorcursor
+				beq .pageJump
+.donePageJump
+				dex
+				beq .resetx
+.doneResetX
+				jmp .loop		
+.done
+				jmp donePrepareLine
+.resetx
+				ldx #22
+				dec temp2
+				lda #255
+				cmp temp2
+				beq .done ; end of screen?
+				jmp .loop
+.pageJump
+				inc colorcursor + 1
+				jmp .donePageJump
+.explosion
+				jsr random
+				and #3
+				beq .explosionPropogate
+				jmp .doneChange
+.explosionPropogate
+				lda temp2
+				cmp #0
+				beq .doneChange
+				lda #spacePrintable
+				sta (colorcursor),y
+				ldy #23 + 22
+				lda #explodePrintable
+				sta (colorcursor),y
+				ldy #22
+				jmp .doneChange
+
+.baddy
+				; if we are at the far end of the screen, don't move, as only half of the
+				; baddy will have been drawn
+				cpx #1;21
+				beq .doneChange
+				
+				; if on the ground (1 above ground, as 2 high), randomly launch
+				lda temp2
+				cmp #1
+				bne .flying
+				jsr random
+				and #$7
+				beq .flying
+				ldy #22 + 22
+				jmp .drawBottomOnly		
+.flying
+				; clear space below the rocket
+				lda #spacePrintable
+				ldy #23 + 22
+				sta (colorcursor),y
+				dey
+				sta (colorcursor),y
+				
+				; have we reached the top of the screen?
+				ldy temp2
+				cpy #screenHeight - 4
+				beq .notDrawNextBaddy
+				
+				; draw whole rocket
+				; first the top
+				ldy #0
+				lda #baddyLeftPrintable
+				sta (colorcursor),y
+				lda #baddyRightPrintable
+				iny
+				sta (colorcursor),y
+				
+				; then the bottom
+				ldy #22
+.drawBottomOnly
+				lda #baddyBottomLeftPrintable
+				sta (colorcursor),y
+				lda #baddyBottomRightPrintable
+				iny
+				sta (colorcursor),y
+.notDrawNextBaddy
+				ldy #22
+				jmp .doneChange
+																		
 updatePeriodic	subroutine ; returns with zero flag set if fuel exhausted
 				jsr increaseScoreAndProgress
 				lda #1 ; clear zero flag
@@ -384,13 +493,22 @@ increaseLevel	subroutine
 				cpx #maxLevel
 				bne .doneIncrease
 				ldx #0 ; back to first level, but increase speed
+				
 				; Increase speed
 				lda minShipDx
 				clc
 				adc	#amountToIncreaseSpeedBy
+				bcc .notSpeedWrapAround
+				lda #255
+.notSpeedWrapAround
 				sta minShipDx
+				
+				; increase rocket frequency
+				inc rocketProbability
+				inc rocketProbability
 .doneIncrease
 				stx levelNumber
+
 				jsr setUpLevel
 				jsr updateBonuses
 				rts
@@ -607,7 +725,7 @@ printline		subroutine
 				jmp .loop
 .done 
 				rts
-
+				
 scroll			subroutine
 				; not yet drawn ship. Indicate this by setting the replacedChar with 255 (invalid value it will never encounter)
 				lda #255
@@ -824,17 +942,39 @@ drawtower
 				lda fuelChar; this is variable, as we may be drawing the first or second character
 				sta nextLine,x
 .storecharcomplete3
-				lda #spacePrintable ; back to printing spaces
 				
 				; do we need to print the second edge?
 				lda fuelChar
 				cmp #fuelLeftPrintable
-				beq .switchToRight
-								
+				beq .switchToRight1
+				cmp #baddyLeftPrintable
+				beq .switchToRight2
+				
 				; switch to printing the left edge again and choose the position for
 				; the next fuel character
-				lda #fuelLeftPrintable
+				
+				; work out the row
+				jsr random 
+				and #$0f
+				clc
+				adc #$3
+				sta fuelRow
+				
+				jsr random
+				and #$7
+				cmp rocketProbability
+				bpl .nextIsFuel
+				
+				lda #screenHeight - 4
+				sta fuelRow
+				
+				lda #baddyLeftPrintable
+				jmp .gotNext
+.nextIsFuel
+				lda #fuelLeftPrintable		
+.gotNext
 				sta fuelChar
+;				jsr random
 				lda #6
 				and #$7 ; random number 0 to 7
 				ora #$80 ; set MSB to delay drawing until after next tower
@@ -844,21 +984,19 @@ drawtower
 .not7
 				sta fuelColumn
 				
-				; now the row
-				jsr random 
-				and #$0f
-				clc
-				adc #$3
-				sta fuelRow
 .305
 				dey
 				jmp .3
-.switchToRight
+.switchToRight1
 				lda #fuelRightPrintable
 				sta fuelChar
 				dec fuelColumn ; set to print the right hand edge next column
 				jmp .305
-
+.switchToRight2
+				lda #baddyRightPrintable
+				sta fuelChar
+				dec fuelColumn ; set to print the right hand edge next column
+				jmp .305
 .drawnGap
 				; now draw the the top part
 				ldy #1 ; draw 1 top character then switch to middle				
@@ -962,25 +1100,23 @@ random			subroutine
 								
 				; wait for raster to enter border
 rasterdelay
-		;		lda #3
-		;		sta borderPaper
+;				lda #3
+;				sta borderPaper
 .rasterloop
 				lda rasterline
 				cmp #131 ; TODO: different value for NTSC, probably lower
 				bpl .rasterloop
 				
-		;		lda #0
-		;		sta borderPaper
-				
+;				lda #0
+;				sta borderPaper				
 .rasterLowerLoop
 
 				lda rasterline
 				cmp #130 ;130; TODO: different value for NTSC, probably lower
 				bmi .rasterloop
 
-		;		lda #1
-		;		sta borderPaper
-
+;				lda #1
+;				sta borderPaper
 				rts
 
 workOutShipPosition
@@ -1048,9 +1184,25 @@ drawshipchar
 				sta (shipToBeDrawnAt2),x
 				rts
 				
-clearship		lda #spacePrintable
-				sta character
-				jmp drawshipchar
+clearship		
+				ldx #0
+				lda (shipToBeDrawnAt1),x
+				cmp #shipTopPrintable
+				bmi .doneReplace1
+				lda #spacePrintable
+				sta (shipToBeDrawnAt1),x
+.doneReplace1
+				lda (shipToBeDrawnAt2),x
+				cmp #shipTopPrintable
+				bmi .doneReplace2
+				lda #spacePrintable
+				sta (shipToBeDrawnAt2),x
+.doneReplace2
+				rts
+				
+				;lda #spacePrintable
+				;sta character
+				;jmp drawshipchar
 									
 control			subroutine				
 				; if crashing, no control
@@ -1108,6 +1260,7 @@ controlDone
 				rts
 			
 temp			dc.b	0
+temp2			dc.b	0
 
 physics			subroutine
 				; returns with zero flag set if end of game
@@ -1308,6 +1461,8 @@ updateSound subroutine
 				sta verticalScreenPosition
 				
 				jsr random
+				ora #128 ; set top bit so will actually make a sound
+				sta voice2
 				tax
 				and #1
 				clc
@@ -1321,8 +1476,15 @@ updateSound subroutine
 				lda #horizontalScreenDefaultPosition
 				sta horizontalScreenPosition
 				jmp .engineSound
-								
+.crashSound
+				ldx #shipy
+;				stx fuelSoundCount
+				jmp .makeSound			
 .engineSound
+				lda flags
+				and #crashing
+				bne .crashSound
+				
 				ldx shipdx
 .makeSound
 				stx voice3
@@ -1479,7 +1641,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	10,10,3
-						dc.b	1,2 
+						dc.b	1,3 
 						dc.b	10, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
@@ -1487,7 +1649,7 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	28,7,3
-						dc.b	150,1 
+						dc.b	150,2
 						dc.b	15, 0
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
@@ -1495,14 +1657,14 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	7,15,3
-						dc.b	150,2 
+						dc.b	150,3
 						dc.b	15, 0
 						
 maxLevel				equ 	7
 
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 ;;;; Every odd numbered level will be level 1. Otherwise, it's the level number divided by 2
-setupTowerCharacters	subroutine				
+setupTowerCharacters	subroutine						
 				lda #<startOfLevelDefinitions
 				sta cursor
 				lda #>startOfLevelDefinitions
@@ -1561,8 +1723,7 @@ setupTowerCharacters	subroutine
 							
 				jsr .getNext
 				tax
-				jsr prepareColors
-								
+				jsr prepareColors	
 				rts
 
 .getNext		lda (cursor),y
@@ -1570,7 +1731,7 @@ setupTowerCharacters	subroutine
 				rts
 .endOfLevels
 				ldy #0 ; reset back to start
-				; increase speed (TODO)
+.doneSpeedup					
 				jmp .endOfLevelsReturn
 				
 resetScroll		subroutine
@@ -1605,8 +1766,9 @@ solidLeftChar	dc.b	0,0,0,0,0,0,0,0
 towerLeftChar	dc.b	0,0,0,0,0,0,0,0
 starLeftChar	dc.b	0,0,0,0,0,0,0,0
 blackLeftChar	dc.b	0,0,0,0,0,0,0,0
-; bonus characters
 fuelLeftChar	dc.b	0,0,0,0,0,0,0,0
+baddyLeftChar	dc.b	0,0,0,0,0,0,0,0
+baddyBottomLeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
@@ -1615,11 +1777,17 @@ towerRightChar	dc.b	145,137,197,163,145,137,197,163
 starRightChar	dc.b	16,16,56,254,56,16,16,16
 blackRightChar	dc.b	255,255,255,255,255,255,255,255
 fuelRightChar	dc.b	126,66,223,199,223,223,94,126
+baddyRightChar	dc.b	16,16,56,56,40,40,40,40
+baddyBottomRightChar	dc.b	40,40,124,198,254,254,198,130
 
 numberOfScrollableCharacters equ (rightEdges - leftEdges) / 8
 
 fuelLeftPrintable equ (fuelLeftChar - startOfChars) / 8
 fuelRightPrintable equ (fuelRightChar - startOfChars) / 8
+baddyLeftPrintable equ (baddyLeftChar - startOfChars) / 8
+baddyRightPrintable equ (baddyRightChar - startOfChars) / 8
+baddyBottomLeftPrintable equ (baddyBottomLeftChar - startOfChars) / 8
+baddyBottomRightPrintable equ (baddyBottomRightChar - startOfChars) / 8
 towerLeftPrintable equ (towerLeftChar - startOfChars) / 8
 towerRightPrintable equ (towerRightChar - startOfChars) / 8
 solidLeftPrintable equ (solidLeftChar - startOfChars) / 8
@@ -1636,7 +1804,11 @@ solidChar		dc.b	255,255,0,255,255,0,255,255
 solidPrintable equ (solidChar - startOfChars) / 8	
 blackChar		dc.b	255,255,255,255,255,255,255,255
 blackPrintable equ (blackChar - startOfChars) / 8	
-	
+goingUpChar		dc.b	255,0,0,0,0,0,0,0
+goingUpPrintable equ (goingUpChar - startOfChars) / 8	
+goingDownChar	dc.b	0,0,0,0,0,0,0,255
+goingDownPrintable equ (goingDownChar - startOfChars) / 8	
+
 singleScrollable
 numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 
@@ -1717,7 +1889,15 @@ backgroundMap
 				dc	254, 2, 255, 1, 44, 44,
 				dc	254, 7, 255, 4, 44, 44
 				dc 253 ; end
-
+; map 2
+				dc	255, 4, 254, 0, 22 ; title
+				dc	254, 1, 255, 2, 44, 44,
+				dc	254, 7, 255, 1, 44, 44,
+				dc	254, 4, 255, 7, 44, 44,
+				dc	254, 2, 255, 1, 44, 44,
+				dc	254, 7, 255, 4, 44, 44
+				dc 253 ; end
+				
 dataEnd
 				dc.b	0
 
