@@ -1627,9 +1627,9 @@ spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	250,1
 						dc.b	80, 1
 
-towerChars0				dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
+towerChars0				dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	blackRightPrintable,blackLeftPrintable,blackRightPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,3
 						dc.b	1,2 
@@ -1771,10 +1771,10 @@ baddyBottomLeftChar	dc.b	0,0,0,0,0,0,0,0
 
 rightEdges
 
-solidRightChar	dc.b	255,255,0,255,255,0,255,255
+solidRightChar	dc.b	255,255,0,255,255,0,255,255	
 towerRightChar	dc.b	145,137,197,163,145,137,197,163
 starRightChar	dc.b	16,16,56,254,56,16,16,16
-blackRightChar	dc.b	255,255,255,255,255,255,255,255
+blackRightChar	dc.b	223,223,223,0,251,251,251,0
 fuelRightChar	dc.b	126,66,223,199,223,223,94,126
 baddyRightChar	dc.b	16,16,56,56,40,40,40,40
 baddyBottomRightChar	dc.b	40,40,124,198,254,254,198,130
@@ -1801,8 +1801,6 @@ nonscrollable
 				; striped block, not scrollable
 solidChar		dc.b	255,255,0,255,255,0,255,255				
 solidPrintable equ (solidChar - startOfChars) / 8	
-blackChar		dc.b	255,255,255,255,255,255,255,255
-blackPrintable equ (blackChar - startOfChars) / 8	
 goingUpChar		dc.b	255,0,0,0,0,0,0,0
 goingUpPrintable equ (goingUpChar - startOfChars) / 8	
 goingDownChar	dc.b	0,0,0,0,0,0,0,255
@@ -1816,10 +1814,12 @@ numberOfSingleScrollableChars	equ (endOfScenery - singleScrollable) / 8
 bottomBlockChar	dc.b	128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
 jetSpotChar		dc.b	0, 0, 0, 1, 0, 0, 0, 0
 explodeChar		dc.b	88,91,1,45,185,231,0,233
+blackChar		dc.b	223,223,223,0,251,251,251,0
 
 bottomBlockPrintable equ (bottomBlockChar - startOfChars) / 8
 jetSpotPrintable equ (jetSpotChar - startOfChars) / 8
 explodePrintable equ (explodeChar - startOfChars) / 8	
+blackPrintable equ (blackChar - startOfChars) / 8	
 
 endOfScenery
 
