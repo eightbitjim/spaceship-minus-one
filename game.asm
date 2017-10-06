@@ -1213,10 +1213,9 @@ control			subroutine
 				lda #0
 				sta $9120 ; reset keyboard state
 
-	;			lda joystickIn1
-	;			ora #255 - 32 ; set all other bits. Only care about fire button
-	;			and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
-				lda $9121
+				lda joystickIn1
+				ora #255 - 32 ; set all other bits. Only care about fire button
+				and $9121 ; get any 0 bits from keyboard state (indicates a key is pressed)
 											
 				ldx lastkey
 				sta lastkey
@@ -1228,9 +1227,7 @@ control			subroutine
 				beq .notpress
 				
 				; something just pressed
-				; what?
-				cmp #254 ; space
-				beq thrust
+				jmp thrust
 .controlDone		 
 				; ignore
 				rts
