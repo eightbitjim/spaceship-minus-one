@@ -639,15 +639,9 @@ prepareColors	subroutine
 				ldx #1
 				stx bgOrfg
 .switchbgfg
-				ldx bgOrfg
-				cpx #0
-				bne .notBg
-				ldx #1
-				stx bgOrfg
-				jmp .readloop
-.notBg
-				ldx #0
-				stx bgOrfg
+				lda bgOrfg
+				eor #1
+				sta bgOrfg
 .readloop
 				jsr .nextInstruction
 				cmp #255
@@ -675,8 +669,7 @@ prepareColors	subroutine
 				lda color1
 .outloop
 				cpx #0
-				beq .switchbgfg ; swap background and foreground, and get next instruction
-								
+				beq .switchbgfg ; swap background and foreground, and get next instruction		
 				sta (colorcursor),y ; y = 0
 
 				; colorcursor+=1
@@ -1647,9 +1640,10 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	28,7,3
+						
+						dc.b	28,7,56 - 8
 						dc.b	150,2
-						dc.b	15, 0
+						dc.b	15, 2
 						
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1882,19 +1876,19 @@ backgroundMap
 				dc 253 ; end
 ; map 1
 				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 1, 255, 2, 44, 44,
-				dc	254, 7, 255, 1, 44, 44,
-				dc	254, 4, 255, 7, 44, 44,
-				dc	254, 2, 255, 1, 44, 44,
+				dc	254, 1, 255, 2, 44, 44
+				dc	254, 7, 255, 1, 44, 44
+				dc	254, 4, 255, 7, 44, 44
+				dc	254, 2, 255, 1, 44, 44
 				dc	254, 7, 255, 4, 44, 44
 				dc 253 ; end
 ; map 2
 				dc	255, 4, 254, 0, 22 ; title
-				dc	254, 1, 255, 2, 44, 44,
-				dc	254, 7, 255, 1, 44, 44,
-				dc	254, 4, 255, 7, 44, 44,
-				dc	254, 2, 255, 1, 44, 44,
-				dc	254, 7, 255, 4, 44, 44
+				dc  254, 5, 255,0,
+				dc  82, 2, 19, 4, 18, 4, 19, 2
+				dc  254, 3
+				dc	225, 1, 9, 1, 6, 1, 4, 2, 1, 2, 5
+				dc  2, 3, 3, 3, 7, 2, 4, 2, 5, 2, 22, 22
 				dc 253 ; end
 				
 dataEnd
@@ -1904,6 +1898,7 @@ dataEnd
 				echo "Total length ", dataEnd - start
 				echo "Code space left ", 7168 - programEnd
 				echo "Characters left ", (spaceChar - endOfScenery) / 8
+				echo "End ", dataEnd
 				
 
 
