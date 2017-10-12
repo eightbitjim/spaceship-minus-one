@@ -1,5 +1,5 @@
 				processor 6502
-				org $1200 ; 1400 originally. should be free
+				org $1204 ; 1400 originally. should be free
 				
 				; keyboard scan routine at eb1e, fills in $cb and f5. Scans $9120 and $9121. quite long
 start   		subroutine
