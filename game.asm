@@ -99,10 +99,8 @@ lastFrameWasScroll	equ 43
 ; non zero page variables
 levelNumber			dc.b 0 ; infrequent
 randseed		dc 234, 17 ; Occasionally
-flags			dc 0 ; bit 0 indicates ship is crashing
+shipReplaceCharacter    dc 0 ; either 'spacePrintable' if OK or 'explodePrintable' if crashing
 rocketProbability	dc	1
-
-crashing	equ 1
 
 .outOfFuel
 				jmp restart
@@ -143,9 +141,8 @@ collision 		subroutine
 				lda fuel
 				cmp #255 ; wrapped around, i.e. no fuel left
 				bne .explosionDone
-				lda flags
-				ora #crashing
-				sta flags
+				lda #explodePrintable
+				sta shipReplaceCharacter
 				lda #0
 				sta fuel
 .explosionDone
@@ -574,7 +571,9 @@ init			subroutine
 				
 				lda #0 ; start with no fuel
 				sta fuel
-				sta flags
+				
+				lda #spacePrintable
+				sta shipReplaceCharacter
 				
 				lda #8
 				sta scrollCounter
@@ -1182,26 +1181,26 @@ clearship
 				lda (shipToBeDrawnAt1),x
 				cmp #shipTopPrintable
 				bmi .doneReplace1
-				lda #spacePrintable
+				;lda #spacePrintable
+				lda shipReplaceCharacter
 				sta (shipToBeDrawnAt1),x
 .doneReplace1
 				lda (shipToBeDrawnAt2),x
 				cmp #shipTopPrintable
 				bmi .doneReplace2
 				lda #spacePrintable
+				;lda shipReplaceCharacter
 				sta (shipToBeDrawnAt2),x
 .doneReplace2
 				rts
-				
-				;lda #spacePrintable
-				;sta character
-				;jmp drawshipchar
-									
+													
 control			subroutine				
+				
 				; if crashing, no control
-				lda flags
-				and #crashing
+				lda shipReplaceCharacter
+				cmp #spacePrintable
 				bne .controlDone
+				
 				; scan keyboard for key presses or joystick
 				lda #0
 				sta $9120 ; reset keyboard state
@@ -1314,8 +1313,8 @@ physics			subroutine
 				bmi .doneBounce
 				
 				; if we are crashing, now it's the end of the game
-				lda flags
-				and #crashing
+				lda shipReplaceCharacter
+				cmp #spacePrintable
 				bne donePhysicsEndOfGame			
 				lda #directionUp
 				sta shipDirection
@@ -1471,8 +1470,8 @@ updateSound subroutine
 ;				stx fuelSoundCount
 				jmp .makeSound			
 .engineSound
-				lda flags
-				and #crashing
+				lda shipReplaceCharacter
+				cmp #spacePrintable
 				bne .crashSound
 				
 				ldx shipdx
@@ -1878,6 +1877,15 @@ backgroundMap
 				dc	254, 7, 255, 4, 44, 44
 				dc 253 ; end
 ; map 2
+				dc	255, 4, 254, 0, 22 ; title
+				dc  254, 5, 255,0,
+				dc  82, 2, 19, 4, 18, 4, 19, 2
+				dc  254, 3
+				dc	225, 1, 9, 1, 6, 1, 4, 2, 1, 2, 5
+				dc  2, 3, 3, 3, 7, 2, 4, 2, 5, 2, 22, 22
+				dc 253 ; end
+				
+; map 3
 				dc	255, 4, 254, 0, 22 ; title
 				dc  254, 5, 255,0,
 				dc  82, 2, 19, 4, 18, 4, 19, 2
