@@ -1189,7 +1189,6 @@ clearship
 				cmp #shipTopPrintable
 				bmi .doneReplace2
 				lda #spacePrintable
-				;lda shipReplaceCharacter
 				sta (shipToBeDrawnAt2),x
 .doneReplace2
 				rts
@@ -1588,72 +1587,6 @@ waitForStartKey subroutine
 				
 				rts
 
-; level format:
-; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower on top
-;       4 - 7: front, middle, middle, back edge characters for edges of tower on top
-;       8 - 11: front, middle, middle, back edge characters for mid-way through tower on bottom
-;       12 - 15: front, middle, middle, back edge characters for edges of tower on bottom
-
-;       16    : horizontal gap between towers
-;       17    : vertical gap between towers
-;       18    : border and paper colour
-
-;       19-20: number of moves before switching to next level (lo,hi)
-
-;		21	 ; minimum horizontal speed
-;		22	 ; background map number
-
-
-fuelActiveFlag	equ #1
-
-; specify the order of levels. 255 instructs to wrap around
-finishedLevels	equ	255
-levelOrder	dc.b	1,2,0,3,0,4,0,0,5,6,finishedLevels
-
-startOfLevelDefinitions
-spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
-						dc.b	spacePrintable,spacePrintable,starRightPrintable,starLeftPrintable
-						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
-						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
-						dc.b	5,14,8 ; black border, black paper
-						dc.b	250,1
-						dc.b	80, 1
-
-towerChars0				dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
-						dc.b	8,24,3
-						dc.b	1,2 
-						dc.b	10, 0
-											
-towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	10,10,3
-						dc.b	1,3 
-						dc.b	10, 0
-						
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						
-						dc.b	28,7,56 - 8
-						dc.b	150,2
-						dc.b	15, 2
-						
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
-						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	7,15,3
-						dc.b	150,3
-						dc.b	15, 0
-						
-maxLevel				equ 	7
-
 ;;;; Set up characters to use when drawing towers. X should have tower set number, 0 being the first
 ;;;; Every odd numbered level will be level 1. Otherwise, it's the level number divided by 2
 setupTowerCharacters	subroutine						
@@ -1894,6 +1827,72 @@ backgroundMap
 				dc  2, 3, 3, 3, 7, 2, 4, 2, 5, 2, 22, 22
 				dc 253 ; end
 				
+				; level format:
+; Bytes 0 - 3: front, middle, middle, back edge characters for mid-way through tower on top
+;       4 - 7: front, middle, middle, back edge characters for edges of tower on top
+;       8 - 11: front, middle, middle, back edge characters for mid-way through tower on bottom
+;       12 - 15: front, middle, middle, back edge characters for edges of tower on bottom
+
+;       16    : horizontal gap between towers
+;       17    : vertical gap between towers
+;       18    : border and paper colour
+
+;       19-20: number of moves before switching to next level (lo,hi)
+
+;		21	 ; minimum horizontal speed
+;		22	 ; background map number
+
+
+fuelActiveFlag	equ #1
+
+; specify the order of levels. 255 instructs to wrap around
+finishedLevels	equ	255
+levelOrder	dc.b	1,2,0,3,0,4,0,0,5,6,finishedLevels
+
+startOfLevelDefinitions
+spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	spacePrintable,spacePrintable,starRightPrintable,starLeftPrintable
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
+						dc.b	5,14,8 ; black border, black paper
+						dc.b	250,1
+						dc.b	80, 1
+
+towerChars0				dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						dc.b	8,24,3
+						dc.b	1,2 
+						dc.b	10, 0
+											
+towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	10,10,3
+						dc.b	1,3 
+						dc.b	10, 0
+						
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						
+						dc.b	28,7,56 - 8
+						dc.b	150,2
+						dc.b	15, 2
+						
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
+						dc.b	7,15,3
+						dc.b	150,3
+						dc.b	15, 0
+						
+maxLevel				equ 	7
+
 dataEnd
 				dc.b	0
 
