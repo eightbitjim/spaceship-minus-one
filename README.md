@@ -1,6 +1,8 @@
 # viccy-spaceship
 A game for the Commodore Vic 20. This is very much work in progress, so is only partially working at present.
 
+![screenshot](/screenshot.jpg)
+
 If you want to have a go, you should assemble using the [dasm assembler](https://github.com/cprieto/dasm) as follows:
 
 `dasm game.asm -ogame.prg`
