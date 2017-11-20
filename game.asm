@@ -1811,20 +1811,21 @@ backgroundMap
 				dc 253 ; end
 ; map 2
 				dc	255, 4, 254, 0, 22 ; title
-				dc  254, 5, 255,0,
+				dc  254, 0, 255,3
 				dc  82, 2, 19, 4, 18, 4, 19, 2
-				dc  254, 3
+				dc  255, 1
 				dc	225, 1, 9, 1, 6, 1, 4, 2, 1, 2, 5
 				dc  2, 3, 3, 3, 7, 2, 4, 2, 5, 2, 22, 22
 				dc 253 ; end
 				
 ; map 3
 				dc	255, 4, 254, 0, 22 ; title
-				dc  254, 5, 255,0,
-				dc  82, 2, 19, 4, 18, 4, 19, 2
-				dc  254, 3
-				dc	225, 1, 9, 1, 6, 1, 4, 2, 1, 2, 5
-				dc  2, 3, 3, 3, 7, 2, 4, 2, 5, 2, 22, 22
+				dc  254, 4, 255,4
+				dc  242, 4 * 22
+				dc 255,2
+				dc 3,5,2,4, 5, 3
+				dc 	255, 2, 254, 2
+				dc	6 * 22
 				dc 253 ; end
 				
 				; level format:
@@ -1847,26 +1848,29 @@ fuelActiveFlag	equ #1
 
 ; specify the order of levels. 255 instructs to wrap around
 finishedLevels	equ	255
-levelOrder	dc.b	1,2,0,3,0,4,0,0,5,6,finishedLevels
+levelOrder	dc.b	1,2,0,5,3,0,4,0,0,5,finishedLevels
 
 startOfLevelDefinitions
-spaceLevel				dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						; 0: stars, fast
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	spacePrintable,spacePrintable,starRightPrintable,starLeftPrintable
 						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	starRightPrintable,starLeftPrintable,spacePrintable,spacePrintable
 						dc.b	5,14,8 ; black border, black paper
-						dc.b	250,1
+						dc.b	250,2
 						dc.b	80, 1
 
-towerChars0				dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
+						; 1: brick towers
+						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	blackRightPrintable,blackPrintable,blackPrintable,blackLeftPrintable
 						dc.b	8,24,3
 						dc.b	1,2 
 						dc.b	10, 0
-											
-towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+									
+						; 2: gantry towers top and bottom, medium spacing		
+						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
@@ -1874,22 +1878,32 @@ towerChars1				dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spaceP
 						dc.b	1,3 
 						dc.b	10, 0
 						
+						; 3: gantry towers top and bottom, narrow, large horizontal gaps
 						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	towerRightPrintable,towerLeftPrintable,towerRightPrintable,towerLeftPrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						
-						dc.b	28,7,56 - 8
-						dc.b	150,2
+						dc.b	20,7,136 - 8
+						dc.b	150,3
 						dc.b	15, 2
 						
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						; 4: floating obstacles
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	spacePrintable,towerRightPrintable,towerLeftPrintable,spacePrintable
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
 						dc.b	solidRightPrintable,solidPrintable,solidPrintable,solidLeftPrintable
-						dc.b	7,15,3
-						dc.b	150,3
-						dc.b	15, 0
+						dc.b	1,15,28 - 8
+						dc.b	150,4
+						dc.b	15, 3
+						
+						; 5: fuel and rockets, fast
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	spacePrintable,spacePrintable,fuelRightPrintable,fuelLeftPrintable
+						dc.b	spacePrintable,spacePrintable,spacePrintable,spacePrintable
+						dc.b	fuelRightPrintable,fuelLeftPrintable,spacePrintable,spacePrintable
+						dc.b	7,14,8
+						dc.b	250,1
+						dc.b	80, 1
 						
 maxLevel				equ 	7
 
