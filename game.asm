@@ -14,8 +14,8 @@ restart
 				jmp smoothScrollLoop
 				
 welcome			dc.b	147,18,31,">>>>>>>>>>>>>>>>000000",146,0
-startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
-				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP 83 ", 13
+				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE OR FIRE ",13,0
 				
 welcometerminator 	dc 0
 
@@ -210,9 +210,7 @@ dontdrawship
 				jsr rasterdelay
 				jsr physics		
 				beq endGame
-				
 				jmp smoothScrollLoop
-				
 scrollNow
 				jsr clearship
 				jsr workOutShipPosition
@@ -596,6 +594,9 @@ setUpLevel
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
 				
+				ldx #<tune1
+				ldy #>tune1
+				jsr startTune
 				rts
 
 defaultBackground		equ 	3
@@ -1435,6 +1436,9 @@ stopSound
 				rts
 				
 updateSound subroutine
+				jsr playTune
+				rts
+				
 				ldx explosionEffectCount
 				cpx #0
 				beq .engineSound
@@ -1526,8 +1530,99 @@ powerUp			subroutine
 				sta effectCount
 				rts
 				
-effectCount		dc.b 0
+musicNotes		dc.b	100 ; a 0
+				dc.b	110 ; b 1
+				dc.b	120 ; c 2
+				dc.b	130 ; d 3
+				dc.b	140 ; e 4
+				dc.b	150 ; f 5
+				dc.b	160 ; g 6
+				
+				; next octave
+				dc.b	170 ; a 7
+				dc.b	180 ; b 8 
+				dc.b	190 ; c 9
+				dc.b	200 ; d 10
+				dc.b	210 ; e 11
+				dc.b	220 ; f 12
+				dc.b	230 ; g 13
 
+				; tunes are stored in a list of items of the following format:
+				; [noteIndex,timeOn,timeSilence],...
+				; noteIndex of 255 indicates end of the tune
+tune1			dc.b	3,8, 9,4, 8,4, 7,4, 8,4, 255
+tune2			dc.b	7,10, 8,10, 9,10, 11,5, 12,5, 13,5, 255
+
+effectCount		dc.b 0
+tunePosition	dc.b 0
+tuneCounter		dc.b 0
+tuneState		dc.b 0	; 3 = stopped, 2 = playing note, 1 = playing silence, 0 = ready to move to next position
+
+startTune		
+				stx currentTuneMinusOne + 1
+				sty currentTuneMinusOne + 2
+				lda #0
+				sta tunePosition
+				lda #1 			; when tune starts, it the counter will count down to zero, the tune state
+								; will be decremented to zero, and then it will get the next (i.e. first) note
+				sta tuneCounter
+				sta tuneState
+				rts
+playTune
+				dec tuneCounter
+				beq .doneCountdown
+				rts
+.doneCountdown
+				dec tuneState
+				lda tuneState
+				cmp #2 ; stopped
+				beq .stopTune
+				cmp #1 ; ready to turn off note?
+				beq .turnOffNote
+				cmp #0 ; ready for next note?
+				beq .getNextNote
+				rts
+.stopTune
+				lda #3
+				sta tuneState
+				rts
+.turnOffNote
+				lda #0
+				sta voice2
+				jsr .getCurrentTuneByteAgain
+				lsr 	; silence will be half as long as the note
+				sta tuneCounter
+				rts	
+.getNextNote
+				; get next note index
+				jsr .getNextTuneByte
+				cmp #255 ; end of tune?
+				bne .useNote
+				lda #3 ; stopped
+				sta tuneState
+				rts
+.useNote
+				tax
+				; get note value
+				lda musicNotes,x
+				; play it
+				sta voice2
+				; get the duration
+				jsr .getNextTuneByte
+				sta tuneCounter
+				lda #2
+				sta tuneState
+				rts
+.getCurrentTuneByteAgain
+				ldx tunePosition
+				jmp currentTuneMinusOne
+.getNextTuneByte
+				ldx tunePosition
+				inc tunePosition
+currentTuneMinusOne
+				lda 1234,x
+				rts
+					
 screenWidth			equ 23
 screenHeight		equ 24
 
