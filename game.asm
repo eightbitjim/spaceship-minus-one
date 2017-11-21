@@ -69,7 +69,7 @@ shipdx			equ		177
 shipMinorX		equ		176
 shipx			equ		171
 shipDirection	equ		170
-fuelSoundCount	equ     169
+;fuelSoundCount	equ     169
 diff			equ 	166 
 charReplaced    equ 	165
 character		equ		164 ; put in zero page ; Every 1 and 8 frames during refresh * speed up. Maybe even self modifying code.
@@ -165,8 +165,9 @@ collision 		subroutine
 				jmp .increaseFuelNow	
 .increaseFuelNow
 				jsr increaseScoreBy100
-				lda #128
-				sta fuelSoundCount
+				;lda #128
+				;sta fuelSoundCount
+				jsr bonusSound1
 				lda #fuelIncreaseAmount
 				jsr increaseFuel
 .finishedNotFatal
@@ -1414,7 +1415,7 @@ soundVolume		equ		36878
 voice0			equ		36874
 voice1			equ		36875
 voice2			equ		36876
-voice3			equ		36877
+voice3			equ		36877 ; noise
 
 setUpSound
 				lda #15
@@ -1437,7 +1438,6 @@ stopSound
 				
 updateSound subroutine
 				jsr playTune
-				rts
 				
 				ldx explosionEffectCount
 				cpx #0
@@ -1467,48 +1467,20 @@ updateSound subroutine
 				sta verticalScreenPosition
 				lda #horizontalScreenDefaultPosition
 				sta horizontalScreenPosition
+				lda #0
+				sta voice2
 				jmp .engineSound
 .crashSound
 				ldx #shipy
-;				stx fuelSoundCount
 				jmp .makeSound			
 .engineSound
 				lda shipReplaceCharacter
 				cmp #spacePrintable
 				bne .crashSound
-				
 				ldx shipdx
 .makeSound
 				stx voice3
-				
-				lda fuelSoundCount
-				sta voice2
-				rol
-				sta voice0
-				lda fuelSoundCount
-				cmp #0
-				beq .donefuelsound
-				tax
-				inx
-				inx
-				inx
-				inx
-				stx fuelSoundCount
-.donefuelsound
-				lda effectCount
-				ldx #0
-				cmp #0
-				beq .doneEffect
-				; the effect is in progress
-				ldx #250
-				dec effectCount
-				and #3
-				beq .doneEffect
-				ldx #255
-				jsr increaseScoreBy10
-
 .doneEffect
-				stx	voice1
 				rts
 
 explosionEffectCount	dc.b	0
@@ -1519,41 +1491,42 @@ explosionEffect	subroutine
 				rts
 				
 bonusSound1		subroutine
-				lda #200
-				sta fuelSoundCount
-				lda #40
-				sta effectCount
+				ldx #<tune2
+				ldy #>tune2
+				jsr startTune
 				rts
 						
 powerUp			subroutine
-				lda #100
-				sta effectCount
+				ldx #<tune1
+				ldy #>tune1
+				jsr startTune
 				rts
 				
-musicNotes		dc.b	100 ; a 0
-				dc.b	110 ; b 1
-				dc.b	120 ; c 2
-				dc.b	130 ; d 3
-				dc.b	140 ; e 4
-				dc.b	150 ; f 5
-				dc.b	160 ; g 6
-				
-				; next octave
-				dc.b	170 ; a 7
-				dc.b	180 ; b 8 
-				dc.b	190 ; c 9
-				dc.b	200 ; d 10
-				dc.b	210 ; e 11
-				dc.b	220 ; f 12
-				dc.b	230 ; g 13
+musicNotes
+				dc.b	195 ; c
+				dc.b	201 ; d
+				dc.b	207 ; e
+				dc.b	209 ; f
+				dc.b	215 ; g
+				dc.b	219 ; a
+				dc.b	223 ; b
+				dc.b	225 ; c
+				dc.b	228 ; d
+				dc.b	231	; e
+				dc.b	232	; f
+				dc.b	235 ; g
+				dc.b	237 ; a
+				dc.b	239 ; b
+				dc.b	240 ; c
+		
+				dc.b			
 
 				; tunes are stored in a list of items of the following format:
 				; [noteIndex,timeOn,timeSilence],...
 				; noteIndex of 255 indicates end of the tune
-tune1			dc.b	3,8, 9,4, 8,4, 7,4, 8,4, 255
-tune2			dc.b	7,10, 8,10, 9,10, 11,5, 12,5, 13,5, 255
+tune1			dc.b	13,8, 12,4, 11,4, 10,4, 11,4, 255
+tune2			dc.b	10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 255
 
-effectCount		dc.b 0
 tunePosition	dc.b 0
 tuneCounter		dc.b 0
 tuneState		dc.b 0	; 3 = stopped, 2 = playing note, 1 = playing silence, 0 = ready to move to next position
@@ -1588,7 +1561,8 @@ playTune
 				rts
 .turnOffNote
 				lda #0
-				sta voice2
+				sta voice1
+				sta voice0
 				jsr .getCurrentTuneByteAgain
 				lsr 	; silence will be half as long as the note
 				sta tuneCounter
@@ -1606,7 +1580,8 @@ playTune
 				; get note value
 				lda musicNotes,x
 				; play it
-				sta voice2
+				sta voice1
+				sta voice0
 				; get the duration
 				jsr .getNextTuneByte
 				sta tuneCounter
@@ -1631,12 +1606,12 @@ explode subroutine
 				ldx #255				
 .loop
 				stx borderPaper
-				sty	voice2
-				sty voice1
-				sty voice0
 				dex
 				bne .loop
 				dey
+				sty	voice2
+				sty voice1
+				sty voice0
 				bne .loop
 				rts
 
