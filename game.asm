@@ -1503,97 +1503,115 @@ powerUp			subroutine
 				rts
 				
 musicNotes
-				dc.b	195 ; c
-				dc.b	201 ; d
-				dc.b	207 ; e
-				dc.b	209 ; f
-				dc.b	215 ; g
-				dc.b	219 ; a
-				dc.b	223 ; b
-				dc.b	225 ; c
-				dc.b	228 ; d
-				dc.b	231	; e
-				dc.b	232	; f
-				dc.b	235 ; g
-				dc.b	237 ; a
-				dc.b	239 ; b
-				dc.b	240 ; c
+				dc.b	0 ; 0 off
+				dc.b	195 ; c0
+				dc.b	201 ; d1
+				dc.b	207 ; e2
+				dc.b	209 ; f3
+				dc.b	215 ; g4
+				dc.b	219 ; a5
+				dc.b	223 ; b6
+				
+				dc.b	225 ; c7
+				dc.b	228 ; d8
+				dc.b	231	; e9
+				dc.b	232	; f10
+				dc.b	235 ; g11
+				dc.b	237 ; a12
+				dc.b	239 ; b13
+				
+				dc.b	240 ; c14
 		
 				dc.b			
 
 				; tunes are stored in a list of items of the following format:
 				; [noteIndex,timeOn,timeSilence],...
 				; noteIndex of 255 indicates end of the tune
-tune1			dc.b	13,8, 12,4, 11,4, 10,4, 11,4, 255
-tune2			dc.b	10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 255
+tune1voice1Start equ tune1voice1 - tune1voice0
+tune1
+tune1voice0		dc.b	tune1voice1Start, 13,8, 12,4, 11,4, 10,4, 11,4,0,1, 0,1,255
+tune1voice1		dc.b	9,4,0,4,12,16,0,1,255
 
-tunePosition	dc.b 0
-tuneCounter		dc.b 0
-tuneState		dc.b 0	; 3 = stopped, 2 = playing note, 1 = playing silence, 0 = ready to move to next position
+tune2voice1Start equ tune2voice1 - tune2voice0
+tune2
+tune2voice0		dc.b	tune2voice1Start, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
+tune2voice1		dc.b	9,4,0,4,12,16, 0,1,255
 
-startTune		
+tunePositionVoice0	dc.b 0 ; set to 0 when finished
+tuneCounterVoice0	dc.b 0
+
+tunePositionVoice1	dc.b 0 ; set to 0 when finished
+tuneCounterVoice1	dc.b 0
+
+startTune
+				; self modifying code!! set the position to read tune data from
 				stx currentTuneMinusOne + 1
 				sty currentTuneMinusOne + 2
-				lda #0
-				sta tunePosition
-				lda #1 			; when tune starts, it the counter will count down to zero, the tune state
-								; will be decremented to zero, and then it will get the next (i.e. first) note
-				sta tuneCounter
-				sta tuneState
+
+				; set the position to start reading tune data for voice 0
+				ldx #1
+				stx tunePositionVoice0
+				
+				; now get the offset to the second voice's data
+				ldx #0
+				jsr .getNextTuneByte
+				sta tunePositionVoice1
+				
+				lda #1 			; when tune starts, the counters will be decremented to zero and the next (i.e. first)
+								; note will be played
+				sta tuneCounterVoice0
+				sta tuneCounterVoice1
 				rts
 playTune
-				dec tuneCounter
-				beq .doneCountdown
-				rts
-.doneCountdown
-				dec tuneState
-				lda tuneState
-				cmp #2 ; stopped
-				beq .stopTune
-				cmp #1 ; ready to turn off note?
-				beq .turnOffNote
-				cmp #0 ; ready for next note?
-				beq .getNextNote
-				rts
-.stopTune
-				lda #3
-				sta tuneState
-				rts
-.turnOffNote
+				; first voice 0
+				dec tuneCounterVoice0
+				beq .doneCountdownVoice0
+.doVoice1				
+				; now voice 1
+				dec tuneCounterVoice1
+				beq .doneCountdownVoice1
+.doVoice2		
+				; no voice2
+				rts				
+.doneCountdownVoice0
+				ldx tunePositionVoice0
+				beq .doVoice1 ; if zero, voice has finished
+				jsr .getNextTuneByte ; get note
+				cmp #255 ; end?
+				beq .finishedVoice0
+				tay
+				lda musicNotes,y
+				sta voice0
+				inx
+				jsr .getNextTuneByte ; get duration
+				sta tuneCounterVoice0
+				inx
+				stx tunePositionVoice0
+				jmp .doVoice1
+.finishedVoice0
 				lda #0
+				sta tunePositionVoice0
+				jmp .doVoice1
+.doneCountdownVoice1
+				ldx tunePositionVoice1
+				beq .doVoice2 ; if zero, voice has finished
+				jsr .getNextTuneByte ; get note
+				cmp #255 ; end?
+				beq .finishedVoice1
+				tay
+				lda musicNotes,y
 				sta voice1
-				sta voice0
-				jsr .getCurrentTuneByteAgain
-				lsr 	; silence will be half as long as the note
-				sta tuneCounter
-				rts	
-.getNextNote
-				; get next note index
-				jsr .getNextTuneByte
-				cmp #255 ; end of tune?
-				bne .useNote
-				lda #3 ; stopped
-				sta tuneState
-				rts
-.useNote
-				tax
-				; get note value
-				lda musicNotes,x
-				; play it
-				sta voice1
-				sta voice0
-				; get the duration
-				jsr .getNextTuneByte
-				sta tuneCounter
-				lda #2
-				sta tuneState
-				rts
-.getCurrentTuneByteAgain
-				ldx tunePosition
-				jmp currentTuneMinusOne
+				inx
+				jsr .getNextTuneByte ; get duration
+				sta tuneCounterVoice1
+				inx
+				stx tunePositionVoice1
+				jmp .doVoice2
+.finishedVoice1
+				lda #0
+				sta tunePositionVoice1
+				jmp .doVoice2				
 .getNextTuneByte
-				ldx tunePosition
-				inc tunePosition
 currentTuneMinusOne
 				lda 1234,x
 				rts
