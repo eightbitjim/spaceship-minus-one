@@ -1,5 +1,8 @@
 				processor 6502
-				org $1204 ; 1400 originally. should be free
+				org $1200 ; 1400 originally. should be free
+				
+				; zero bytes padding to make an empty basic program
+				dc.b	0,0,0,0
 				
 				; keyboard scan routine at eb1e, fills in $cb and f5. Scans $9120 and $9121. quite long
 start   		subroutine
@@ -13,9 +16,9 @@ restart
 				jsr scrollNow
 				jmp smoothScrollLoop
 				
-welcome			dc.b	147,18,31,">>>>>>>>>>>>>>>>000000",146,0
-startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP 83 ", 13
-				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE OR FIRE ",13,0
+welcome			dc.b	147,18,31, "                000000",146,0
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, "  SPACE SHIP 0 ", 13
+				dc.b	17,17,17,17, 159, 29, 29, 29, 18, "  SPACE / FIRE ",13,0
 				
 welcometerminator 	dc 0
 
@@ -1604,6 +1607,8 @@ explode subroutine
 				sty voice1
 				sty voice0
 				bne .loop
+				lda #3
+				sta borderPaper
 				rts
 
 startScreen     subroutine
