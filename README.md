@@ -1,15 +1,23 @@
 # viccy-spaceship
-A game for the Commodore Vic 20. This is very much work in progress, so is only partially working at present.
+A game for the Commodore Vic 20. Still working on on, it it's just about playable.
+The only control is pressing space!
 
 ![screenshot](/screenshot.jpg)
 
-If you want to have a go, you should assemble using the [dasm assembler](https://github.com/cprieto/dasm) as follows:
+To load, you need either `loader1` (for tape) or `loader8` (for disk), and the `game` file.
+Pre-compiled versions are already in the `output` directory. 
 
-`dasm game.asm -ogame.prg`
+For the VICE emulator, mount the `output` directory as drive 8, then start up a VIC-20. Enter:
 
-Then load `game.prg` into a VIC20 emulator such as Vice. Then run using:
+`load"loader8",8`
 
-`SYS 4612`
+and then `run`.
 
-The only control is pressing space!
+If you want to compile it, you should assemble using the [dasm assembler](https://github.com/cprieto/dasm). First you need to add the path to the dasm assembler to your path, make sure that the compilation script is executable and then run it. Something like:
+
+`export PATH=$PATH:/pathToYourDasmInstallation/dasm/bin`
+`chmod +x compile.sh`
+`./compile.sh`
+
+This will output a new file `game` into the `output` directory.
 
