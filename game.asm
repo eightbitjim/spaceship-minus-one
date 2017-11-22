@@ -14,8 +14,8 @@ restart
 				jmp smoothScrollLoop
 				
 welcome			dc.b	147,18,31,">>>>>>>>>>>>>>>>000000",146,0
-startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP '83 ", 13
-				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE TO START ",13,0
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP 83 ", 13
+				dc.b	17,17,17,17, 159, 29, 29, 29, 18, " SPACE OR FIRE ",13,0
 				
 welcometerminator 	dc 0
 
@@ -69,7 +69,7 @@ shipdx			equ		177
 shipMinorX		equ		176
 shipx			equ		171
 shipDirection	equ		170
-fuelSoundCount	equ     169
+;fuelSoundCount	equ     169
 diff			equ 	166 
 charReplaced    equ 	165
 character		equ		164 ; put in zero page ; Every 1 and 8 frames during refresh * speed up. Maybe even self modifying code.
@@ -165,8 +165,9 @@ collision 		subroutine
 				jmp .increaseFuelNow	
 .increaseFuelNow
 				jsr increaseScoreBy100
-				lda #128
-				sta fuelSoundCount
+				;lda #128
+				;sta fuelSoundCount
+				jsr bonusSound1
 				lda #fuelIncreaseAmount
 				jsr increaseFuel
 .finishedNotFatal
@@ -210,9 +211,7 @@ dontdrawship
 				jsr rasterdelay
 				jsr physics		
 				beq endGame
-				
 				jmp smoothScrollLoop
-				
 scrollNow
 				jsr clearship
 				jsr workOutShipPosition
@@ -538,8 +537,6 @@ onceOnlyInit	subroutine
 				lda #80
 				sta $291	; disable case change
 				
-				jsr defineCharacters ;prepare UDGs
-				
 				lda #0
 				sta levelNumber
 				sta joystickDDR1	; prepare for joystick input
@@ -596,6 +593,9 @@ setUpLevel
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
 				
+				ldx #<tune3
+				ldy #>tune3
+				jsr startTune
 				rts
 
 defaultBackground		equ 	3
@@ -1377,43 +1377,12 @@ donePhysicsEndOfGame
 				lda #0 ; set zero flag to indicate end of game
 				cmp #0
 				rts
-			
-;;;; Graphics routines
-copyROMCharacters	subroutine
-				;;; First copy original character definitions in
-				lda #<32768 ; start of ROM character set
-				sta.z cursor
-				lda #>32768 
-				sta.z cursor + 1
-				
-				lda #<7168 
-				sta.z	colorcursor
-				lda #>7168
-				sta.z colorcursor + 1
-				
-				ldy #0
-				ldx #1
-.copyLoop
-				lda (cursor),y
-				sta (colorcursor),y
-				iny
-				cpy #0
-				bne .copyLoop
-				inc.z cursor + 1
-				inc.z colorcursor + 1
-				dex
-				cpx #0 
-				bne .copyLoop
-				rts
-								
-defineCharacters	subroutine
-				rts
-				
+							
 soundVolume		equ		36878
 voice0			equ		36874
 voice1			equ		36875
 voice2			equ		36876
-voice3			equ		36877
+voice3			equ		36877 ; noise
 
 setUpSound
 				lda #15
@@ -1435,6 +1404,8 @@ stopSound
 				rts
 				
 updateSound subroutine
+				jsr playTune
+				
 				ldx explosionEffectCount
 				cpx #0
 				beq .engineSound
@@ -1463,48 +1434,20 @@ updateSound subroutine
 				sta verticalScreenPosition
 				lda #horizontalScreenDefaultPosition
 				sta horizontalScreenPosition
+				lda #0
+				sta voice2
 				jmp .engineSound
 .crashSound
 				ldx #shipy
-;				stx fuelSoundCount
 				jmp .makeSound			
 .engineSound
 				lda shipReplaceCharacter
 				cmp #spacePrintable
 				bne .crashSound
-				
 				ldx shipdx
 .makeSound
 				stx voice3
-				
-				lda fuelSoundCount
-				sta voice2
-				rol
-				sta voice0
-				lda fuelSoundCount
-				cmp #0
-				beq .donefuelsound
-				tax
-				inx
-				inx
-				inx
-				inx
-				stx fuelSoundCount
-.donefuelsound
-				lda effectCount
-				ldx #0
-				cmp #0
-				beq .doneEffect
-				; the effect is in progress
-				ldx #250
-				dec effectCount
-				and #3
-				beq .doneEffect
-				ldx #255
-				jsr increaseScoreBy10
-
 .doneEffect
-				stx	voice1
 				rts
 
 explosionEffectCount	dc.b	0
@@ -1515,19 +1458,137 @@ explosionEffect	subroutine
 				rts
 				
 bonusSound1		subroutine
-				lda #200
-				sta fuelSoundCount
-				lda #40
-				sta effectCount
+				ldx #<tune2
+				ldy #>tune2
+				jsr startTune
 				rts
 						
 powerUp			subroutine
-				lda #100
-				sta effectCount
+				ldx #<tune1
+				ldy #>tune1
+				jsr startTune
 				rts
 				
-effectCount		dc.b 0
+musicNotes
+				dc.b	0 ; 0 off
+				dc.b	195 ; c1
+				dc.b	201 ; d2
+				dc.b	207 ; e3
+				dc.b	209 ; f4
+				dc.b	215 ; g5
+				dc.b	219 ; a6
+				dc.b	223 ; b7
+				
+				dc.b	225 ; c8
+				dc.b	228 ; d9
+				dc.b	231	; e10
+				dc.b	232	; f11
+				dc.b	235 ; g12
+				dc.b	237 ; a13
+				dc.b	239 ; b14
+				
+				dc.b	240 ; c15
+				dc.b	242	; d16
+		
+				dc.b			
 
+				; tunes are stored in a list of items of the following format:
+				; [noteIndex,timeOn,timeSilence],...
+				; noteIndex of 255 indicates end of the tune
+tune1voice1Start equ tune1voice1 - tune1voice0
+tune1
+tune1voice0		dc.b	tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
+tune1voice1		dc.b	5,16, 6,16, 0,16, 12,16, 0,1,255
+
+tune2voice1Start equ tune2voice1 - tune2voice0
+tune2
+tune2voice0		dc.b	tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
+tune2voice1		dc.b	9,4,0,4,12,16, 0,1,255
+
+tune3voice1Start equ tune3voice1 - tune3voice0
+tune3
+tune3voice0		dc.b	tune3voice1Start, 9,4,10,4,11,4,12,4,13,4,14,4,15,4,16,4,0,1,255
+tune3voice1		dc.b	2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,0,1,255
+
+tunePositionVoice0	dc.b 0 ; set to 0 when finished
+tuneCounterVoice0	dc.b 0
+
+tunePositionVoice1	dc.b 0 ; set to 0 when finished
+tuneCounterVoice1	dc.b 0
+
+startTune
+				; self modifying code!! set the position to read tune data from
+				stx currentTuneMinusOne + 1
+				sty currentTuneMinusOne + 2
+
+				; set the position to start reading tune data for voice 0
+				ldx #1
+				stx tunePositionVoice0
+				
+				; now get the offset to the second voice's data
+				ldx #0
+				jsr .getNextTuneByte
+				sta tunePositionVoice1
+				
+				lda #1 			; when tune starts, the counters will be decremented to zero and the next (i.e. first)
+								; note will be played
+				sta tuneCounterVoice0
+				sta tuneCounterVoice1
+				rts
+playTune
+				; first voice 0
+				dec tuneCounterVoice0
+				beq .doneCountdownVoice0
+.doVoice1				
+				; now voice 1
+				dec tuneCounterVoice1
+				beq .doneCountdownVoice1
+.doVoice2		
+				; no voice2
+				rts				
+.doneCountdownVoice0
+				ldx tunePositionVoice0
+				beq .doVoice1 ; if zero, voice has finished
+				jsr .getNextTuneByte ; get note
+				cmp #255 ; end?
+				beq .finishedVoice0
+				tay
+				lda musicNotes,y
+				sta voice0
+				inx
+				jsr .getNextTuneByte ; get duration
+				sta tuneCounterVoice0
+				inx
+				stx tunePositionVoice0
+				jmp .doVoice1
+.finishedVoice0
+				lda #0
+				sta tunePositionVoice0
+				jmp .doVoice1
+.doneCountdownVoice1
+				ldx tunePositionVoice1
+				beq .doVoice2 ; if zero, voice has finished
+				jsr .getNextTuneByte ; get note
+				cmp #255 ; end?
+				beq .finishedVoice1
+				tay
+				lda musicNotes,y
+				sta voice1
+				inx
+				jsr .getNextTuneByte ; get duration
+				sta tuneCounterVoice1
+				inx
+				stx tunePositionVoice1
+				jmp .doVoice2
+.finishedVoice1
+				lda #0
+				sta tunePositionVoice1
+				jmp .doVoice2				
+.getNextTuneByte
+currentTuneMinusOne
+				lda 1234,x
+				rts
+					
 screenWidth			equ 23
 screenHeight		equ 24
 
@@ -1536,17 +1597,23 @@ explode subroutine
 				ldx #255				
 .loop
 				stx borderPaper
-				sty	voice2
-				sty voice1
-				sty voice0
 				dex
 				bne .loop
 				dey
+				sty	voice2
+				sty voice1
+				sty voice0
 				bne .loop
 				rts
 
 startScreen     subroutine
 				jsr stopSound
+				jsr setUpSound
+				
+				; start the title jingle
+				ldx #<tune1
+				ldy #>tune1
+				jsr startTune
 				
 				; clear screen and display score
 				lda #<startMessage
@@ -1561,6 +1628,10 @@ startScreen     subroutine
 waitForStartKey subroutine
 				jsr random
 
+				; wait for the raster to provide some timing
+				jsr rasterdelay
+				jsr playTune
+				
 				lda #0
 				sta $9120 ; reset keyboard state
 				lda $9121
@@ -1572,7 +1643,7 @@ waitForStartKey subroutine
 				and #32 ; set all other bits. Only care about fire button
 				cmp #32								
 				beq waitForStartKey
-				jmp .restart
+	;			jmp .restart
 				
 .restart
 				lda #0
