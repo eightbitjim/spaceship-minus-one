@@ -537,8 +537,6 @@ onceOnlyInit	subroutine
 				lda #80
 				sta $291	; disable case change
 				
-				jsr defineCharacters ;prepare UDGs
-				
 				lda #0
 				sta levelNumber
 				sta joystickDDR1	; prepare for joystick input
@@ -595,8 +593,8 @@ setUpLevel
 				lda #spacePrintable ; ship hasn't collided with anything yet
 				sta charReplaced
 				
-				ldx #<tune1
-				ldy #>tune1
+				ldx #<tune3
+				ldy #>tune3
 				jsr startTune
 				rts
 
@@ -1379,38 +1377,7 @@ donePhysicsEndOfGame
 				lda #0 ; set zero flag to indicate end of game
 				cmp #0
 				rts
-			
-;;;; Graphics routines
-copyROMCharacters	subroutine
-				;;; First copy original character definitions in
-				lda #<32768 ; start of ROM character set
-				sta.z cursor
-				lda #>32768 
-				sta.z cursor + 1
-				
-				lda #<7168 
-				sta.z	colorcursor
-				lda #>7168
-				sta.z colorcursor + 1
-				
-				ldy #0
-				ldx #1
-.copyLoop
-				lda (cursor),y
-				sta (colorcursor),y
-				iny
-				cpy #0
-				bne .copyLoop
-				inc.z cursor + 1
-				inc.z colorcursor + 1
-				dex
-				cpx #0 
-				bne .copyLoop
-				rts
-								
-defineCharacters	subroutine
-				rts
-				
+							
 soundVolume		equ		36878
 voice0			equ		36874
 voice1			equ		36875
@@ -1504,23 +1471,24 @@ powerUp			subroutine
 				
 musicNotes
 				dc.b	0 ; 0 off
-				dc.b	195 ; c0
-				dc.b	201 ; d1
-				dc.b	207 ; e2
-				dc.b	209 ; f3
-				dc.b	215 ; g4
-				dc.b	219 ; a5
-				dc.b	223 ; b6
+				dc.b	195 ; c1
+				dc.b	201 ; d2
+				dc.b	207 ; e3
+				dc.b	209 ; f4
+				dc.b	215 ; g5
+				dc.b	219 ; a6
+				dc.b	223 ; b7
 				
-				dc.b	225 ; c7
-				dc.b	228 ; d8
-				dc.b	231	; e9
-				dc.b	232	; f10
-				dc.b	235 ; g11
-				dc.b	237 ; a12
-				dc.b	239 ; b13
+				dc.b	225 ; c8
+				dc.b	228 ; d9
+				dc.b	231	; e10
+				dc.b	232	; f11
+				dc.b	235 ; g12
+				dc.b	237 ; a13
+				dc.b	239 ; b14
 				
-				dc.b	240 ; c14
+				dc.b	240 ; c15
+				dc.b	242	; d16
 		
 				dc.b			
 
@@ -1529,13 +1497,18 @@ musicNotes
 				; noteIndex of 255 indicates end of the tune
 tune1voice1Start equ tune1voice1 - tune1voice0
 tune1
-tune1voice0		dc.b	tune1voice1Start, 13,8, 12,4, 11,4, 10,4, 11,4,0,1, 0,1,255
-tune1voice1		dc.b	9,4,0,4,12,16,0,1,255
+tune1voice0		dc.b	tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
+tune1voice1		dc.b	5,16, 6,16, 0,16, 12,16, 0,1,255
 
 tune2voice1Start equ tune2voice1 - tune2voice0
 tune2
-tune2voice0		dc.b	tune2voice1Start, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
+tune2voice0		dc.b	tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
 tune2voice1		dc.b	9,4,0,4,12,16, 0,1,255
+
+tune3voice1Start equ tune3voice1 - tune3voice0
+tune3
+tune3voice0		dc.b	tune3voice1Start, 9,4,10,4,11,4,12,4,13,4,14,4,15,4,16,4,0,1,255
+tune3voice1		dc.b	2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,0,1,255
 
 tunePositionVoice0	dc.b 0 ; set to 0 when finished
 tuneCounterVoice0	dc.b 0
@@ -1635,6 +1608,12 @@ explode subroutine
 
 startScreen     subroutine
 				jsr stopSound
+				jsr setUpSound
+				
+				; start the title jingle
+				ldx #<tune1
+				ldy #>tune1
+				jsr startTune
 				
 				; clear screen and display score
 				lda #<startMessage
@@ -1649,6 +1628,10 @@ startScreen     subroutine
 waitForStartKey subroutine
 				jsr random
 
+				; wait for the raster to provide some timing
+				jsr rasterdelay
+				jsr playTune
+				
 				lda #0
 				sta $9120 ; reset keyboard state
 				lda $9121
@@ -1660,7 +1643,7 @@ waitForStartKey subroutine
 				and #32 ; set all other bits. Only care about fire button
 				cmp #32								
 				beq waitForStartKey
-				jmp .restart
+	;			jmp .restart
 				
 .restart
 				lda #0
