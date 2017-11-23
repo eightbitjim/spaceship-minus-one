@@ -17,8 +17,8 @@ restart
 				jmp smoothScrollLoop
 				
 welcome			dc.b	147,18,31, "                000000",146,0
-startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, "  SPACE SHIP 0 ", 13
-				dc.b	17,17,17,17, 159, 29, 29, 29, 18, "  SPACE / FIRE ",13,0
+startMessage	dc.b	19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP -1 ", 13
+				dc.b	17,17,17,17, 159, 29, 29, 29, 18,      " SPACE OR FIRE ",13,0
 				
 welcometerminator 	dc 0
 

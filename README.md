@@ -5,9 +5,9 @@ The only control is pressing space!
 ![screenshot](/screenshot.jpg)
 
 To load, you need either `loader1` (for tape) or `loader8` (for disk), and the `game` file.
-Pre-compiled versions are already in the `output` directory, or in the `disks/spaceship0.d64` disk image. 
+Pre-compiled versions are already in the `disks/spaceship-1.d64` disk image. 
 
-For the VICE emulator, mount the `output` directory as drive 8 or attach the disk image `spaceship0.d64` and make sure you are running a VIC-20. Don't use "smart attach"... just attach the disk image.
+For the VICE emulator, mount the `output` directory as drive 8 (if you have compiled the game yourself) or attach the pre-made disk image `spaceship-1.d64` and make sure you are running a VIC-20. Don't use "smart attach"... just attach the disk image.
 
 Enter:
 
