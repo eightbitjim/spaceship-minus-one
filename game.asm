@@ -37,7 +37,7 @@ restart
                     jsr scrollNow
                     jmp smoothScrollLoop
                 
-welcome             dc.b    147,18,31, "                000000",146,0
+welcome             dc.b    147,31, 18, "----------------000000",146,0
 startMessage        dc.b    19,17,17,17,17,17,17,18, 5,29, 29, 29, " SPACE SHIP -1 ", 13
                     dc.b    17,17,17,17, 159, 29, 29, 29, 18,      " SPACE OR FIRE ",13,0
                 
@@ -1833,14 +1833,14 @@ numberOfSingleScrollableChars   equ (endOfScenery - singleScrollable) / 8
                 ; now the single character rotational scrolling blocks
                 ; wavy block at bottom of screen
 bottomBlockChar dc.b    128+64, 32+16, 8+4, 2+1, 2+1, 8+4, 32+16, 128+64
-jetSpotChar     dc.b    0, 0, 0, 1, 0, 0, 0, 0
 explodeChar     dc.b    88,91,1,45,185,231,0,233
 blackChar       dc.b    223,223,223,0,251,251,251,0
 
 bottomBlockPrintable equ (bottomBlockChar - startOfChars) / 8
-jetSpotPrintable equ (jetSpotChar - startOfChars) / 8
 explodePrintable equ (explodeChar - startOfChars) / 8   
 blackPrintable equ (blackChar - startOfChars) / 8   
+
+bottomBlockASCIIChar equ 64 + bottomBlockPrintable
 
 endOfScenery
 
