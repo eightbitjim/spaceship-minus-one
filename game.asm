@@ -46,28 +46,35 @@ welcometerminator   dc 0
 enabled             equ     1
 disabled            equ     4
 
+ntscOrPalLocation   equ     $9000
+isNtsc              equ     5
+rasterline          equ     $9004
+borderPaper         equ     $900f
 joystickDDR1        equ     $9113
 joystickDDR2        equ     $9122
 joystickIn1         equ     $9111
 joystickIn2         equ     $9120
-
-;horizontalScreenDefaultPosition equ 12
-;verticalScreenDefaultPosition equ 36
+colorstart          equ     $9400
 
 directionUp         equ     $ff
 directionDown       equ     $01
-rasterline          equ     $9004
-borderPaper         equ     $900f
 screenMemoryPage    equ     648 ; screen memory page for operating system
 CHROUT              equ     $ffd2 ; ROM routine
 screenstart         equ     $1000 ; $1e00 for unexpanded VIC, $1000 for expanded
 screenstarthigh     equ     $10 ; $1e for unexpanded VIC, $10 for expanded
-colorstart          equ     $9400
+
 colorstarthigh      equ     $94 ; $94 for expanded VIC, $96 for unexpanded VIC
 screenwidth         equ     22
 screenheight        equ     23
 fuelIncreaseAmount  equ     10
-shipimpulse         equ     100
+
+shipYImpulsePAL      equ     100
+shipYImpulseNTSC     equ     130
+shipXImpulsePAL     equ     30
+shipXImpulseNTSC    equ     50
+rasterTriggerLinePAL    equ 130
+rasterTriggerLineNTSC   equ 100
+
 gravity             equ     5   
 keypress            equ     197 ; zero page location
 keyspace            equ     32
@@ -91,7 +98,7 @@ shipdx              equ     177
 shipMinorX          equ     176
 shipx               equ     171
 shipDirection       equ     170
-;fuelSoundCount     equ     169
+;ntscOrPal           equ     169
 diff                equ     166 
 charReplaced        equ     165
 character           equ     164 ; put in zero page ; Every 1 and 8 frames during refresh * speed up. Maybe even self modifying code.
@@ -234,14 +241,14 @@ dontdrawship
                 jsr control     
                 jsr updateSound
                 jsr rasterdelay
-                jsr physics     
+                jsr physics    
                 beq endGame
                 jmp smoothScrollLoop
 scrollNow
                 jsr clearship
                 jsr workOutShipPosition
                 jsr scroll
-                jsr updatePeriodic
+     ;           jsr updatePeriodic
 
                 lda #8
                 sta scrollCounter
@@ -294,16 +301,19 @@ smoothScroll    subroutine
                 rts
                 
 handleFullScroll
+                dec scrollCounter
+                beq scrollNow
                 lda scrollCounter
-                cmp #5 
+                cmp #3
+                beq updatePeriodicNow
+                cmp #4 
                 beq prepareLine
-                cmp #6
+                cmp #5
                 beq updateFrame
 donePrepareLine
-                dec scrollCounter               
-                beq scrollNow 
                 rts
-
+updatePeriodicNow
+                jmp updatePeriodic
 updateFrame     subroutine
                 ; update positions of characters. Happens out of phase with full character scrolling
                 lda #screenHeight - 4
@@ -411,11 +421,6 @@ updateFrame     subroutine
                 ldy #22
                 jmp .doneChange
                                                                         
-updatePeriodic  subroutine ; returns with zero flag set if fuel exhausted
-                jsr increaseScoreAndProgress
-                lda #1 ; clear zero flag
-                rts
-                
 updateBonuses   subroutine
                 ; update the fuel and bonus indicator
                 ldx fuel  
@@ -458,7 +463,7 @@ increaseFuel
                 rts
 
 ; Increase score by one and update the onscreen counter
-increaseScoreAndProgress    subroutine
+updatePeriodic  subroutine
                 ; now decrease progress counter. If reached zero, move to next level before returning
                 ldx progressCounterLo
                 dex
@@ -543,7 +548,23 @@ onceOnlyInit    subroutine
                 sta $911e     ; disable non maskable interrupts from restore key
                 lda $912e
                 lda $912d
+        
+                ; detect NTSC or PAL
+                lda ntscOrPalLocation
+                cmp #isNtsc
+                bne .doneNtscOrPal
                 
+                ; set up default NTSC values
+                lda #rasterTriggerLineNTSC  + 1
+                sta rasterTriggerLineMinusOne + 1
+                lda #rasterTriggerLineNTSC
+                sta rasterNextLineMinusOne + 1
+                lda #shipYImpulseNTSC
+                sta thrustYAmountMinusOne + 1
+                lda #shipXImpulseNTSC
+                sta thrustXAmountMinusOne + 1
+                
+.doneNtscOrPal
                 ; remember the screen x and y position as it will move later
                 lda horizontalScreenPosition
                 sta initialHorizontalScreenPosition
@@ -1122,23 +1143,25 @@ random          subroutine
                                 
                 ; wait for raster to enter border
 rasterdelay
-;               lda #3
-;               sta borderPaper
+               lda #4
+               sta borderPaper
 .rasterloop
                 lda rasterline
-                cmp #101 ; 131TODO: different value for NTSC, probably lower
+rasterTriggerLineMinusOne
+                cmp #rasterTriggerLinePAL + 1; gets overwritten with NTSC value if running on NTSC
                 bpl .rasterloop
                 
-;               lda #0
-;               sta borderPaper             
+               lda #0
+               sta borderPaper             
 .rasterLowerLoop
 
                 lda rasterline
-                cmp #100 ;130; TODO: different value for NTSC, probably lower
+rasterNextLineMinusOne
+                cmp #rasterTriggerLinePAL ; gets overwritten with NTSC value if running on NTSC
                 bmi .rasterloop
 
-;               lda #1
-;               sta borderPaper
+               lda #1
+               sta borderPaper
                 rts
 
 workOutShipPosition
@@ -1256,10 +1279,12 @@ control         subroutine
 thrust          
                 lda #255
                 sta jetSound
-                lda #shipimpulse
+thrustYAmountMinusOne
+                lda #shipYImpulsePAL ; gets overwritten with a different value if NTSC
                 sta shipdy
                 clc
-                lda #30
+thrustXAmountMinusOne
+                lda #shipXImpulsePAL;
                 adc shipdx
                 bcc .storedx
                 lda #255
