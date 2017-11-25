@@ -69,9 +69,9 @@ screenheight        equ     23
 fuelIncreaseAmount  equ     10
 
 shipYImpulsePAL      equ     100
-shipYImpulseNTSC     equ     130
+shipYImpulseNTSC     equ     85
 shipXImpulsePAL     equ     30
-shipXImpulseNTSC    equ     50
+shipXImpulseNTSC    equ     25
 rasterTriggerLinePAL    equ 130
 rasterTriggerLineNTSC   equ 95
 
@@ -1779,7 +1779,13 @@ resetScroll     subroutine
                 sta scrollCounter
                 sta lastFrameWasScroll
                 rts
-                
+
+; store some of the music here
+tune2voice1Start equ tune2voice1 - tune2voice0
+tune2
+tune2voice0     dc.b    tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
+tune2voice1     dc.b    9,4,0,4,12,16, 0,1,255
+    
 programEnd
                 dc.b 0
                 
@@ -2016,11 +2022,6 @@ tune1voice1Start equ tune1voice1 - tune1voice0
 tune1
 tune1voice0     dc.b    tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
 tune1voice1     dc.b    5,16, 6,16, 0,16, 12,16, 0,1,255
-
-tune2voice1Start equ tune2voice1 - tune2voice0
-tune2
-tune2voice0     dc.b    tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
-tune2voice1     dc.b    9,4,0,4,12,16, 0,1,255
 
 tune3voice1Start equ tune3voice1 - tune3voice0
 tune3
