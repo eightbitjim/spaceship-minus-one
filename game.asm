@@ -21,7 +21,7 @@
 ; SOFTWARE.
 
                     processor 6502
-                    org $1200 ; 1400 originally. should be free
+                    org $1200
                 
                     ; zero bytes padding to make an empty basic program
                     dc.b    0,0,0,0
@@ -46,30 +46,35 @@ welcometerminator   dc 0
 enabled             equ     1
 disabled            equ     4
 
+ntscOrPalLocation   equ     $9000
+isNtsc              equ     5
+rasterline          equ     $9004
+borderPaper         equ     $900f
 joystickDDR1        equ     $9113
 joystickDDR2        equ     $9122
 joystickIn1         equ     $9111
 joystickIn2         equ     $9120
-
-horizontalScreenPosition    equ $9000 ; bottom 6 bits only
-verticalScreenPosition      equ $9001
-horizontalScreenDefaultPosition equ 12
-verticalScreenDefaultPosition equ 36
+colorstart          equ     $9400
 
 directionUp         equ     $ff
 directionDown       equ     $01
-rasterline          equ     $9004
-borderPaper         equ     $900f
 screenMemoryPage    equ     648 ; screen memory page for operating system
 CHROUT              equ     $ffd2 ; ROM routine
 screenstart         equ     $1000 ; $1e00 for unexpanded VIC, $1000 for expanded
 screenstarthigh     equ     $10 ; $1e for unexpanded VIC, $10 for expanded
-colorstart          equ     $9400
+
 colorstarthigh      equ     $94 ; $94 for expanded VIC, $96 for unexpanded VIC
 screenwidth         equ     22
 screenheight        equ     23
 fuelIncreaseAmount  equ     10
-shipimpulse         equ     100
+
+shipYImpulsePAL      equ     100
+shipYImpulseNTSC     equ     85
+shipXImpulsePAL     equ     30
+shipXImpulseNTSC    equ     25
+rasterTriggerLinePAL    equ 130
+rasterTriggerLineNTSC   equ 95
+
 gravity             equ     5   
 keypress            equ     197 ; zero page location
 keyspace            equ     32
@@ -93,7 +98,7 @@ shipdx              equ     177
 shipMinorX          equ     176
 shipx               equ     171
 shipDirection       equ     170
-;fuelSoundCount     equ     169
+;ntscOrPal           equ     169
 diff                equ     166 
 charReplaced        equ     165
 character           equ     164 ; put in zero page ; Every 1 and 8 frames during refresh * speed up. Maybe even self modifying code.
@@ -123,6 +128,11 @@ levelNumber         dc.b 0 ; infrequent
 randseed            dc 234, 17 ; Occasionally
 shipReplaceCharacter    dc 0 ; either 'spacePrintable' if OK or 'explodePrintable' if crashing
 rocketProbability   dc  1
+
+horizontalScreenPosition    equ $9000 ; bottom 6 bits only
+verticalScreenPosition      equ $9001
+initialHorizontalScreenPosition     dc.b    0
+initialVerticalScreenPosition       dc.b    0
 
 .outOfFuel
                 jmp restart
@@ -230,15 +240,13 @@ dontdrawship
 .doneCollision2
                 jsr control     
                 jsr updateSound
-                jsr rasterdelay
-                jsr physics     
+                jsr physics    
                 beq endGame
                 jmp smoothScrollLoop
 scrollNow
                 jsr clearship
                 jsr workOutShipPosition
                 jsr scroll
-                jsr updatePeriodic
 
                 lda #8
                 sta scrollCounter
@@ -291,16 +299,19 @@ smoothScroll    subroutine
                 rts
                 
 handleFullScroll
+                dec scrollCounter
+                beq scrollNow
                 lda scrollCounter
-                cmp #5 
+                cmp #5
+                beq updatePeriodicNow
+                cmp #6 
                 beq prepareLine
-                cmp #6
+                cmp #7
                 beq updateFrame
 donePrepareLine
-                dec scrollCounter               
-                beq scrollNow 
                 rts
-
+updatePeriodicNow
+                jmp updatePeriodic
 updateFrame     subroutine
                 ; update positions of characters. Happens out of phase with full character scrolling
                 lda #screenHeight - 4
@@ -408,11 +419,6 @@ updateFrame     subroutine
                 ldy #22
                 jmp .doneChange
                                                                         
-updatePeriodic  subroutine ; returns with zero flag set if fuel exhausted
-                jsr increaseScoreAndProgress
-                lda #1 ; clear zero flag
-                rts
-                
 updateBonuses   subroutine
                 ; update the fuel and bonus indicator
                 ldx fuel  
@@ -455,7 +461,7 @@ increaseFuel
                 rts
 
 ; Increase score by one and update the onscreen counter
-increaseScoreAndProgress    subroutine
+updatePeriodic  subroutine
                 ; now decrease progress counter. If reached zero, move to next level before returning
                 ldx progressCounterLo
                 dex
@@ -538,9 +544,30 @@ onceOnlyInit    subroutine
                 sta $912e     ; disable interrupts
                 sta $912d               
                 sta $911e     ; disable non maskable interrupts from restore key
-                
                 lda $912e
                 lda $912d
+        
+                ; detect NTSC or PAL
+                lda ntscOrPalLocation
+                cmp #isNtsc
+                bne .doneNtscOrPal
+                
+                ; set up default NTSC values
+                lda #rasterTriggerLineNTSC  + 1
+                sta rasterTriggerLineMinusOne + 1
+                lda #rasterTriggerLineNTSC
+                sta rasterNextLineMinusOne + 1
+                lda #shipYImpulseNTSC
+                sta thrustYAmountMinusOne + 1
+                lda #shipXImpulseNTSC
+                sta thrustXAmountMinusOne + 1
+                
+.doneNtscOrPal
+                ; remember the screen x and y position as it will move later
+                lda horizontalScreenPosition
+                sta initialHorizontalScreenPosition
+                lda verticalScreenPosition
+                sta initialVerticalScreenPosition
                 
                 lda #8
                 sta scrollCounter
@@ -1114,11 +1141,12 @@ random          subroutine
                                 
                 ; wait for raster to enter border
 rasterdelay
-;               lda #3
+;               lda #4
 ;               sta borderPaper
 .rasterloop
                 lda rasterline
-                cmp #131 ; TODO: different value for NTSC, probably lower
+rasterTriggerLineMinusOne
+                cmp #rasterTriggerLinePAL + 1; gets overwritten with NTSC value if running on NTSC
                 bpl .rasterloop
                 
 ;               lda #0
@@ -1126,7 +1154,8 @@ rasterdelay
 .rasterLowerLoop
 
                 lda rasterline
-                cmp #130 ;130; TODO: different value for NTSC, probably lower
+rasterNextLineMinusOne
+                cmp #rasterTriggerLinePAL ; gets overwritten with NTSC value if running on NTSC
                 bmi .rasterloop
 
 ;               lda #1
@@ -1248,10 +1277,12 @@ control         subroutine
 thrust          
                 lda #255
                 sta jetSound
-                lda #shipimpulse
+thrustYAmountMinusOne
+                lda #shipYImpulsePAL ; gets overwritten with a different value if NTSC
                 sta shipdy
                 clc
-                lda #30
+thrustXAmountMinusOne
+                lda #shipXImpulsePAL;
                 adc shipdx
                 bcc .storedx
                 lda #255
@@ -1274,7 +1305,8 @@ temp2           dc.b    0
 
 physics         subroutine
                 ; returns with zero flag set if end of game
-
+                jsr rasterdelay
+                
                 ; update horizontal position
                 lda #4  ; number of times to add the speed
                 sta temp
@@ -1438,7 +1470,7 @@ updateSound subroutine
                 jsr random
                 and #7
                 clc
-                adc #verticalScreenDefaultPosition
+                adc initialVerticalScreenPosition
                 sta verticalScreenPosition
                 
                 jsr random
@@ -1447,14 +1479,13 @@ updateSound subroutine
                 tax
                 and #1
                 clc
-                adc #horizontalScreenDefaultPosition
+                adc initialHorizontalScreenPosition
                 sta horizontalScreenPosition
-                
                 jmp .makeSound
 .restoreScreen
-                lda #verticalScreenDefaultPosition
+                lda initialVerticalScreenPosition
                 sta verticalScreenPosition
-                lda #horizontalScreenDefaultPosition
+                lda initialHorizontalScreenPosition
                 sta horizontalScreenPosition
                 lda #0
                 sta voice2
@@ -1514,29 +1545,7 @@ musicNotes
         
                 dc.b            
 
-                ; tunes are stored in a list of items of the following format:
-                ; [noteIndex,timeOn,timeSilence],...
-                ; noteIndex of 255 indicates end of the tune
-tune1voice1Start equ tune1voice1 - tune1voice0
-tune1
-tune1voice0     dc.b    tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
-tune1voice1     dc.b    5,16, 6,16, 0,16, 12,16, 0,1,255
-
-tune2voice1Start equ tune2voice1 - tune2voice0
-tune2
-tune2voice0     dc.b    tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
-tune2voice1     dc.b    9,4,0,4,12,16, 0,1,255
-
-tune3voice1Start equ tune3voice1 - tune3voice0
-tune3
-tune3voice0     dc.b    tune3voice1Start, 9,4,10,4,11,4,12,4,13,4,14,4,15,4,16,4,0,1,255
-tune3voice1     dc.b    2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,0,1,255
-
-tunePositionVoice0  dc.b 0 ; set to 0 when finished
-tuneCounterVoice0   dc.b 0
-
-tunePositionVoice1  dc.b 0 ; set to 0 when finished
-tuneCounterVoice1   dc.b 0
+;;;;;;
 
 startTune
                 ; self modifying code!! set the position to read tune data from
@@ -1770,7 +1779,13 @@ resetScroll     subroutine
                 sta scrollCounter
                 sta lastFrameWasScroll
                 rts
-                
+
+; store some of the music here
+tune2voice1Start equ tune2voice1 - tune2voice0
+tune2
+tune2voice0     dc.b    tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
+tune2voice1     dc.b    9,4,0,4,12,16, 0,1,255
+    
 programEnd
                 dc.b 0
                 
@@ -2000,6 +2015,24 @@ startOfLevelDefinitions
                         dc.b    250,1
                         dc.b    80, 1
                         
+                                ; tunes are stored in a list of items of the following format:
+                ; [noteIndex,timeOn,timeSilence],...
+                ; noteIndex of 255 indicates end of the tune
+tune1voice1Start equ tune1voice1 - tune1voice0
+tune1
+tune1voice0     dc.b    tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
+tune1voice1     dc.b    5,16, 6,16, 0,16, 12,16, 0,1,255
+
+tune3voice1Start equ tune3voice1 - tune3voice0
+tune3
+tune3voice0     dc.b    tune3voice1Start, 9,4,10,4,11,4,12,4,13,4,14,4,15,4,16,4,0,1,255
+tune3voice1     dc.b    2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,0,1,255
+
+tunePositionVoice0  dc.b 0 ; set to 0 when finished
+tuneCounterVoice0   dc.b 0
+
+tunePositionVoice1  dc.b 0 ; set to 0 when finished
+tuneCounterVoice1   dc.b 0    
 maxLevel                equ     7
 
 dataEnd
