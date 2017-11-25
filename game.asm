@@ -21,7 +21,7 @@
 ; SOFTWARE.
 
                     processor 6502
-                    org $1200 ; 1400 originally. should be free
+                    org $1200
                 
                     ; zero bytes padding to make an empty basic program
                     dc.b    0,0,0,0
