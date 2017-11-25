@@ -73,7 +73,7 @@ shipYImpulseNTSC     equ     130
 shipXImpulsePAL     equ     30
 shipXImpulseNTSC    equ     50
 rasterTriggerLinePAL    equ 130
-rasterTriggerLineNTSC   equ 100
+rasterTriggerLineNTSC   equ 95
 
 gravity             equ     5   
 keypress            equ     197 ; zero page location
@@ -240,7 +240,6 @@ dontdrawship
 .doneCollision2
                 jsr control     
                 jsr updateSound
-                jsr rasterdelay
                 jsr physics    
                 beq endGame
                 jmp smoothScrollLoop
@@ -248,7 +247,6 @@ scrollNow
                 jsr clearship
                 jsr workOutShipPosition
                 jsr scroll
-     ;           jsr updatePeriodic
 
                 lda #8
                 sta scrollCounter
@@ -304,11 +302,11 @@ handleFullScroll
                 dec scrollCounter
                 beq scrollNow
                 lda scrollCounter
-                cmp #3
-                beq updatePeriodicNow
-                cmp #4 
-                beq prepareLine
                 cmp #5
+                beq updatePeriodicNow
+                cmp #6 
+                beq prepareLine
+                cmp #7
                 beq updateFrame
 donePrepareLine
                 rts
@@ -1143,16 +1141,16 @@ random          subroutine
                                 
                 ; wait for raster to enter border
 rasterdelay
-               lda #4
-               sta borderPaper
+;               lda #4
+;               sta borderPaper
 .rasterloop
                 lda rasterline
 rasterTriggerLineMinusOne
                 cmp #rasterTriggerLinePAL + 1; gets overwritten with NTSC value if running on NTSC
                 bpl .rasterloop
                 
-               lda #0
-               sta borderPaper             
+;               lda #0
+;               sta borderPaper             
 .rasterLowerLoop
 
                 lda rasterline
@@ -1160,8 +1158,8 @@ rasterNextLineMinusOne
                 cmp #rasterTriggerLinePAL ; gets overwritten with NTSC value if running on NTSC
                 bmi .rasterloop
 
-               lda #1
-               sta borderPaper
+;               lda #1
+;               sta borderPaper
                 rts
 
 workOutShipPosition
@@ -1307,7 +1305,8 @@ temp2           dc.b    0
 
 physics         subroutine
                 ; returns with zero flag set if end of game
-
+                jsr rasterdelay
+                
                 ; update horizontal position
                 lda #4  ; number of times to add the speed
                 sta temp
