@@ -51,10 +51,8 @@ joystickDDR2        equ     $9122
 joystickIn1         equ     $9111
 joystickIn2         equ     $9120
 
-horizontalScreenPosition    equ $9000 ; bottom 6 bits only
-verticalScreenPosition      equ $9001
-horizontalScreenDefaultPosition equ 12
-verticalScreenDefaultPosition equ 36
+;horizontalScreenDefaultPosition equ 12
+;verticalScreenDefaultPosition equ 36
 
 directionUp         equ     $ff
 directionDown       equ     $01
@@ -123,6 +121,11 @@ levelNumber         dc.b 0 ; infrequent
 randseed            dc 234, 17 ; Occasionally
 shipReplaceCharacter    dc 0 ; either 'spacePrintable' if OK or 'explodePrintable' if crashing
 rocketProbability   dc  1
+
+horizontalScreenPosition    equ $9000 ; bottom 6 bits only
+verticalScreenPosition      equ $9001
+initialHorizontalScreenPosition     dc.b    0
+initialVerticalScreenPosition       dc.b    0
 
 .outOfFuel
                 jmp restart
@@ -538,9 +541,14 @@ onceOnlyInit    subroutine
                 sta $912e     ; disable interrupts
                 sta $912d               
                 sta $911e     ; disable non maskable interrupts from restore key
-                
                 lda $912e
                 lda $912d
+                
+                ; remember the screen x and y position as it will move later
+                lda horizontalScreenPosition
+                sta initialHorizontalScreenPosition
+                lda verticalScreenPosition
+                sta initialVerticalScreenPosition
                 
                 lda #8
                 sta scrollCounter
@@ -1118,7 +1126,7 @@ rasterdelay
 ;               sta borderPaper
 .rasterloop
                 lda rasterline
-                cmp #131 ; TODO: different value for NTSC, probably lower
+                cmp #101 ; 131TODO: different value for NTSC, probably lower
                 bpl .rasterloop
                 
 ;               lda #0
@@ -1126,7 +1134,7 @@ rasterdelay
 .rasterLowerLoop
 
                 lda rasterline
-                cmp #130 ;130; TODO: different value for NTSC, probably lower
+                cmp #100 ;130; TODO: different value for NTSC, probably lower
                 bmi .rasterloop
 
 ;               lda #1
@@ -1438,7 +1446,7 @@ updateSound subroutine
                 jsr random
                 and #7
                 clc
-                adc #verticalScreenDefaultPosition
+                adc initialVerticalScreenPosition
                 sta verticalScreenPosition
                 
                 jsr random
@@ -1447,14 +1455,13 @@ updateSound subroutine
                 tax
                 and #1
                 clc
-                adc #horizontalScreenDefaultPosition
+                adc initialHorizontalScreenPosition
                 sta horizontalScreenPosition
-                
                 jmp .makeSound
 .restoreScreen
-                lda #verticalScreenDefaultPosition
+                lda initialVerticalScreenPosition
                 sta verticalScreenPosition
-                lda #horizontalScreenDefaultPosition
+                lda initialHorizontalScreenPosition
                 sta horizontalScreenPosition
                 lda #0
                 sta voice2
@@ -1514,29 +1521,7 @@ musicNotes
         
                 dc.b            
 
-                ; tunes are stored in a list of items of the following format:
-                ; [noteIndex,timeOn,timeSilence],...
-                ; noteIndex of 255 indicates end of the tune
-tune1voice1Start equ tune1voice1 - tune1voice0
-tune1
-tune1voice0     dc.b    tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
-tune1voice1     dc.b    5,16, 6,16, 0,16, 12,16, 0,1,255
-
-tune2voice1Start equ tune2voice1 - tune2voice0
-tune2
-tune2voice0     dc.b    tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
-tune2voice1     dc.b    9,4,0,4,12,16, 0,1,255
-
-tune3voice1Start equ tune3voice1 - tune3voice0
-tune3
-tune3voice0     dc.b    tune3voice1Start, 9,4,10,4,11,4,12,4,13,4,14,4,15,4,16,4,0,1,255
-tune3voice1     dc.b    2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,0,1,255
-
-tunePositionVoice0  dc.b 0 ; set to 0 when finished
-tuneCounterVoice0   dc.b 0
-
-tunePositionVoice1  dc.b 0 ; set to 0 when finished
-tuneCounterVoice1   dc.b 0
+;;;;;;
 
 startTune
                 ; self modifying code!! set the position to read tune data from
@@ -2000,6 +1985,29 @@ startOfLevelDefinitions
                         dc.b    250,1
                         dc.b    80, 1
                         
+                                ; tunes are stored in a list of items of the following format:
+                ; [noteIndex,timeOn,timeSilence],...
+                ; noteIndex of 255 indicates end of the tune
+tune1voice1Start equ tune1voice1 - tune1voice0
+tune1
+tune1voice0     dc.b    tune1voice1Start, 16,4, 14,12, 15,4, 13,12, 12,4, 13,4, 14,4, 15,4, 16,16, 0,1, 255
+tune1voice1     dc.b    5,16, 6,16, 0,16, 12,16, 0,1,255
+
+tune2voice1Start equ tune2voice1 - tune2voice0
+tune2
+tune2voice0     dc.b    tune2voice1Start, 15,2, 14,2, 10,2, 11,2, 12,2, 13,2, 13,2, 13,2, 0,1, 255
+tune2voice1     dc.b    9,4,0,4,12,16, 0,1,255
+
+tune3voice1Start equ tune3voice1 - tune3voice0
+tune3
+tune3voice0     dc.b    tune3voice1Start, 9,4,10,4,11,4,12,4,13,4,14,4,15,4,16,4,0,1,255
+tune3voice1     dc.b    2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,0,1,255
+
+tunePositionVoice0  dc.b 0 ; set to 0 when finished
+tuneCounterVoice0   dc.b 0
+
+tunePositionVoice1  dc.b 0 ; set to 0 when finished
+tuneCounterVoice1   dc.b 0    
 maxLevel                equ     7
 
 dataEnd
