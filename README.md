@@ -2,7 +2,7 @@
 A very minimal game for the Commodore Vic 20. Still working on it, but it's just about playable.
 The only control is pressing space!
 
-Design goal: write a fairly minimalist game to run on an unexpanded 3K Vic-20, to load off cassette. Focus on making a simple, playable game.
+Design goal: write a fairly minimalist game to run on an unexpanded Vic-20, to load off cassette. Focus on making a simple, playable game.
 
 ![screenshot](/screenshot.jpg)
 
