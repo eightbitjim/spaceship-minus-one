@@ -22,10 +22,9 @@
 
                     processor 6502
                     org $1200
-                
+
                     ; zero bytes padding to make an empty basic program
-                    dc.b    0,0,0,0
-                
+                    dc.b    0,0,0,0           
 start               subroutine
                     jsr onceOnlyInit
                     jsr init
