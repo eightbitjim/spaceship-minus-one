@@ -2037,12 +2037,11 @@ maxLevel                equ     7
 dataEnd
                 dc.b    0
 
+    IFNCONST printedCompilationDetails
+printedCompilationDetails SET 1
                 echo "To run: SYS ", start
                 echo "Total length ", dataEnd - start
                 echo "Code space left ", 7168 - programEnd
                 echo "Characters left ", (spaceChar - endOfScenery) / 8
                 echo "End ", dataEnd
-                
-
-
-                    
+    END
