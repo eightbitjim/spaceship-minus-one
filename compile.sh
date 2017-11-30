@@ -10,12 +10,8 @@ cp loaders/loader output/tapeAndDisk
 dasm game.asm -ooutput/tapeAndDisk/game
 
 # compile the cartridge version of the game as a raw binary
-dasm game.asm -f3 -otemp/game.bin
+dasm game.asm -f3 -otemp/game.bin 
 
 # compile the cartridge loader
-dasm cartridgeStub.asm -f3 -ooutput/cartridge/game-a000.crt
-
-# now pad it to 8K
-dd if=/dev/null of=output/cartridge/game-a000.crt bs=1 count=0 seek=8192 
-
-
+dasm cartridgeStub.asm -f3 -ooutput/cartridge/game-a000.bin
+dasm cartridgeStub.asm -f3 -ooutput/cartridge/game.crt -MCRT

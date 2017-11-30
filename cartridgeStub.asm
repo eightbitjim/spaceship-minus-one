@@ -20,8 +20,24 @@
 ; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ; SOFTWARE.
 
+; define where in the VIC memory the cartridge will load
+cartridgeBaseAddress    equ $a000
+
     processor 6502
-	ORG	$a000
+
+    IFCONST CRT
+        IFNCONST atLastOneCompilationPassComplete
+            echo "Compiling .crt file"
+        ENDIF
+        org cartridgeBaseAddress - 2;
+        dc.b    <cartridgeBaseAddress
+        dc.b    >cartridgeBaseAddress
+    ELSE
+        IFNCONST atLastOneCompilationPassComplete
+            echo "Compiling .bin cartridge image"
+        ENDIF
+	    org	cartridgeBaseAddress
+    ENDIF
 
 ; constants
 destinationAddress  equ     $1200
@@ -98,3 +114,9 @@ gameCode
     incbin temp/game.bin
 endOfGame
     dc.b    0 ; end
+    
+    ; pad to 8K
+    org cartridgeBaseAddress + 8192 - 1
+    dc.b    0 ; final byte
+    
+atLastOneCompilationPassComplete    SET 1
