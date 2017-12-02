@@ -42,13 +42,16 @@ cartridgeBaseAddress    equ $a000
 ; constants
 destinationAddress  equ     $1200
 executionAddress    equ     $1204
+CHROUT              equ     $ffd2 ; ROM routine
 
 ; zero page variables
 readAddressLow      equ     253
 readAddressHigh     equ     254
 writeAddressLow     equ     204
 writeAddressHigh    equ     205
-			
+cursor              equ     253
+temp                equ     204
+
 	; Cartridge header
 	dc.b 	<initialisation
 	dc.b    >initialisation
@@ -69,6 +72,9 @@ initialisation
     jsr	$fd52
     jsr	$fdf9
     jsr	$e518
+    
+    jsr displayCopyProtection
+    jsr displayIntroMessage
     
 copyGame subroutine
     lda #<gameCode
@@ -110,6 +116,178 @@ copyGame subroutine
     ; data copied. run it
     jmp executionAddress
 
+copyProtectionMessage
+    dc.b    147, 13
+    dc.b    "ALIGN THE PLASTIC",13
+    dc.b    "PRISM WITH THE CODE",13
+    dc.b    "CARD AT POSITION ",0
+copyProtectionMessage2
+    dc.b    ".",13
+    dc.b    13
+    dc.b    "ENTER THE THREE DIGITS"
+    dc.b    "YOU CAN SEE.",13
+    dc.b    13,0
+    
+resultMessage
+    dc.b    13,13
+    dc.b    "CLOSE ENOUGH",0
+    
+displayCopyProtection
+    lda #<copyProtectionMessage
+    sta cursor
+    lda #>copyProtectionMessage
+    sta cursor + 1
+    jsr printLine
+    
+    lda #"D"
+    jsr CHROUT
+    lda #"3"
+    jsr CHROUT
+    
+    lda #<copyProtectionMessage2
+    sta cursor
+    lda #>copyProtectionMessage2
+    sta cursor + 1
+    jsr printLine
+    
+    jsr waitForAnyKey
+    lda #"*"
+    jsr CHROUT
+    
+    jsr waitForAnyKey
+    lda #"*"
+    jsr CHROUT
+    
+    jsr waitForAnyKey
+    lda #"*"
+    jsr CHROUT
+    
+    jsr delay
+    lda #<resultMessage
+    sta cursor
+    lda #>resultMessage
+    sta cursor + 1
+    jsr printLine
+    jsr delay    
+    rts
+
+delay subroutine
+    lda #2
+    ldx #255
+    ldy #0
+.loop
+    dey
+    bne .loop
+    dex
+    cpx #0
+    bne .loop
+    sec
+    sbc #1
+    cmp #0
+    bne .loop
+    rts
+    
+introMessage
+    dc.b    147, 13
+    dc.b    5, "  SPACESHIP MINUS ONE",13
+    dc.b    "  --------- ----- ---",13
+    dc.b    13
+    dc.b    31, "   YOU ARE THE PROUD",13
+    dc.b    "   OWNER OF THE MOST",13
+    dc.b    "ADVANCED AND  YET MOST",13
+    dc.b    "  MINIMAL SPACE CRAFT",13
+    dc.b    "   EVER CONSTRUCTED.",13
+    dc.b    13
+    dc.b    "  THERE IS ONLY ONE",13
+    dc.b    "   CONTROL: THRUST.",13
+    dc.b    13
+    dc.b    "IT IS TIME TO TAKE IT",13
+    dc.b    "    OUT FOR A SPIN.",13,0
+introMessage2
+    dc.b    13
+    dc.b    "  BE CAREFUL NOT TO",13
+    dc.b    "SCRATCH THE PAINTWORK!",13
+    dc.b    13
+    dc.b    5, "      PRESS SPACE",0
+        
+displayIntroMessage
+    lda #59
+    sta $900f
+
+    lda #<introMessage
+    sta cursor
+    lda #>introMessage
+    sta cursor + 1
+    jsr printLine
+    
+    lda #<introMessage2
+    sta cursor
+    lda #>introMessage2
+    sta cursor + 1
+    jsr printLine
+    
+    jsr waitForStartKey
+    rts
+    
+printLine subroutine
+    ldy #0
+.loop
+    lda (cursor),y
+    cmp #0
+    beq .done
+    jsr CHROUT
+    iny
+    cpy #0
+    bne .loop
+    inc cursor
+    bne .loop
+    inc cursor + 1
+    jmp .loop
+.done 
+    rts
+
+getKeyState     subroutine
+    lda #255    ; set off with no key press recorded
+    sta temp
+    ldx #0
+    ldy #30
+.loop
+    lda #0
+    sta $9120 ; reset keyboard state
+    lda $9121 ; get current value
+    and temp
+    sta temp
+    inx
+    bne .loop
+    dey
+    bne .loop
+    lda temp
+    rts
+    
+waitForAnyKey   subroutine
+    ; first wait for no key to be pressed, then wait for something to be pressed
+    jsr getKeyState                                
+    cmp #255 ; no key pressed
+    beq .waitForKeyDown
+    jmp waitForAnyKey
+.waitForKeyDown
+    lda #0
+    sta $9120 ; reset keyboard state
+    lda $9121
+                                
+    cmp #255 ; no key pressed
+    beq .waitForKeyDown
+.done
+    rts
+    
+waitForStartKey subroutine
+    jsr getKeyState                                
+    cmp #254 ; space key
+    beq .done
+    jmp waitForStartKey
+.done
+    rts
+    
 gameCode
     incbin temp/game.bin
 endOfGame
