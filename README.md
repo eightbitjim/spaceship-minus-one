@@ -7,7 +7,8 @@ Design goal: write a fairly minimalist game to run on an unexpanded Vic-20, to l
 ![screenshot](/screenshot.jpg)
 
 To load, you need to load and run `loader`, which then loads and runs the `game` file.
-Pre-compiled versions are already in the `disks/spaceship-1.d64` disk image. Or you can attach the pre-compiled cartridge image (in the `cartridges` directory) to an emulator such as VICE.
+
+Pre-compiled versions are already in the `disks/spaceship-1.d64` disk image. Or you can attach the pre-compiled cartridge image (in the `cartridges` directory) to an emulator such as VICE. Or record the wav file `tapes/ss_minus_one_tape.wav` to a cassette tape and load into a real Vic.
 
 If you want to compile it, you should assemble using the [dasm assembler](https://github.com/cprieto/dasm). First you need to add the path to the dasm assembler to your path, make sure that the compilation script is executable and then run it. Something like:
 
