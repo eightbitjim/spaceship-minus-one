@@ -1,6 +1,5 @@
 # viccy-spaceship
-A very minimal game for the Commodore Vic 20. Still working on it, but it's just about playable.
-The only control is pressing space!
+A very minimal game for the Commodore Vic 20. The only control is pressing space!
 
 Design goal: write a fairly minimalist game to run on an unexpanded Vic-20, to load off cassette. Focus on making a simple, playable game.
 
@@ -22,5 +21,3 @@ This will output files `loader` and `game` into the `output/tapeAndDisk` directo
 
 - `game-a000.bin`: a raw binary file suitable for putting onto a ROM
 - `game.crt`: same as above except with 2 byte load address at the beginning, suitable to attach as a cartridge image on VICE.
-
-
