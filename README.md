@@ -1,5 +1,5 @@
 # spaceship-minus-one
-A very minimal game for the Commodore Vic 20. The only control is pressing space!
+A game for the Commodore Vic 20. The only control is pressing space!
 
 Design goal: write a fairly minimalist game to run on an unexpanded Vic-20, to load off cassette. Focus on making a simple, playable game.
 
